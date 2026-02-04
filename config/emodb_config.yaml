@@ -1,0 +1,3 @@
+# Define paths
+RAW_DATA_DIR: "data/raw/emodb"
+CSV_DIR: "data/csv"
