@@ -1,14 +1,16 @@
 import os
 import librosa
-import yaml
 
-def load_config(config):
-    """Receive and store configuration"""
-    global _config
-    _config = config
-    return _config
-
-_config = None
+# Emotion mapping for EmoDb to numeric labels
+EMOTION_MAPPING = {
+    'W': 2,  # Wut (anger)
+    'L': 4,  # Langeweile (boredom)
+    'E': 5,  # Ekel (disgust)
+    'A': 3,  # Angst (fear/anxiety)
+    'F': 0,  # Freude (happiness)
+    'T': 6,  # Trauer (sadness)
+    'N': 1   # Neutral
+}
 
 def parse_filename(filename):
     """
@@ -24,18 +26,17 @@ def parse_filename(filename):
     # Extract emotion (second to last character)
     emotion_code = name[-2].upper()
     
-    # Get Emotin Mapping Path
-    emotion_mapping_path = os.path.join(_config['BASE_DIR'], _config['EMOTION_MAPPING_PATH'])
-    with open(emotion_mapping_path, 'r') as f:
-        config_data = yaml.safe_load(f)
-    
-    # Get Emotion and Emotion label
-    emotion = config_data['emotion_mapping'].get(emotion_code, 'unknown')
-    emotion_label = config_data['emotion_to_id'].get(emotion, 'unknown')
+    # Extract emotion (second to last character)
+    emotion_code = name[-2]
+    emotion_label = EMOTION_MAPPING.get(emotion_code, -1)
 
     return speaker, emotion_label
 
 def extract_metadata(wav_path):
+    """
+    Extract audio features from wav file.
+    Returns duration, start time (0), and stop time (duration)
+    """
     try:
         # Load audio file
         y, sr = librosa.load(wav_path, sr=None)
