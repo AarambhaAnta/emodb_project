@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "emodb-utils"
+version = "0.1.0"
+description = "Emotion Analysis utilities for EmoDb dataset"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Aarambha", email = "aarambha108@gmail.com"}
+]
+dependencies = [
+    "pandas",
+    "librosa",
+    "tqdm",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "flake8",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["utils*"]
+exclude = ["utils.__pycache__*"]
