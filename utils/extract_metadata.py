@@ -1,5 +1,7 @@
 import os
 import librosa
+import pandas as pd
+from pathlib import Path
 
 # Emotion mapping for EmoDb to numeric labels
 EMOTION_MAPPING = {
@@ -60,3 +62,33 @@ def get_metadata(wav_path):
     duration, start, stop = extract_metadata(wav_path=wav_path)
 
     return name, duration, wav_path, start, stop, speaker, emotion_label
+
+def extract_metadata_from_folder(folder_path):
+    """
+    Extract metadata from all .wav files in a folder.
+    
+    Args:
+        folder_path: Path to folder containing .wav files
+        
+    Returns:
+        pandas DataFrame with columns: name, duration, path, start, stop, speaker, emotion
+    """
+    folder = Path(folder_path)
+    wav_files = list(folder.glob('*.wav'))
+    
+    metadata_list = []
+    
+    for wav_file in wav_files:
+        name, duration, path, start, stop, speaker, emotion_label = get_metadata(str(wav_file))
+        metadata_list.append({
+            'name': name,
+            'duration': duration,
+            'path': path,
+            'start': start,
+            'stop': stop,
+            'speaker': speaker,
+            'emotion': emotion_label
+        })
+    
+    df = pd.DataFrame(metadata_list)
+    return df
