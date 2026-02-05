@@ -30,7 +30,7 @@ def parse_filename(filename):
     emotion_code = name[-2]
     emotion_label = EMOTION_MAPPING.get(emotion_code, -1)
 
-    return speaker, emotion_label
+    return name, speaker, emotion_label
 
 def extract_metadata(wav_path):
     """
@@ -56,7 +56,7 @@ def extract_metadata(wav_path):
 def get_metadata(wav_path):
     filename = os.path.basename(wav_path)
 
-    speaker , emotion_label = parse_filename(filename=filename)
+    name, speaker , emotion_label = parse_filename(filename=filename)
     duration, start, stop = extract_metadata(wav_path=wav_path)
 
-    return filename, duration, start, stop, speaker, emotion_label
+    return name, duration, wav_path, start, stop, speaker, emotion_label
