@@ -217,3 +217,9 @@ __marimo__/
 
 # Dataset
 data/
+
+# Temporary files
+temp/
+
+# System files
+.DS_store
