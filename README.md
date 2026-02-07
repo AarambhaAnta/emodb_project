@@ -342,11 +342,13 @@ Configured in [config/ecapa_hparams.yaml](config/ecapa_hparams.yaml):
 Training results are saved to JSON files:
 
 **Single speaker training:**
+
 ```bash
 output/models/training_results_speaker_03.json
 ```
 
 **All speakers training:**
+
 ```bash
 output/models/training_results.json
 ```
