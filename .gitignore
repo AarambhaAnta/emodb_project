@@ -220,6 +220,10 @@ data/
 
 # Temporary files
 temp/
+scripts/
 
 # System files
 .DS_store
+
+# Models 
+output/models/*/
