@@ -116,19 +116,23 @@ def segment_audio_stage(config, logger):
     logger.info("STAGE 2: AUDIO SEGMENTATION")
     logger.info("=" * 70)
     
-    raw_audio_dir = os.path.join(config['BASE_DIR'], config['PATHS']['RAW_DATA'])
+    input_csv = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'], 'metadata.csv')
     segment_dir = os.path.join(config['BASE_DIR'], config['PATHS']['SEGMENT'])
     output_csv = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'], 'segmented_metadata.csv')
     
-    logger.info(f"Input directory: {raw_audio_dir}")
+    logger.info(f"Input CSV: {input_csv}")
     logger.info(f"Segment directory: {segment_dir}")
     logger.info(f"Output CSV: {output_csv}")
     
+    # Get sample rate from config
+    sr = config.get('AUDIO', {}).get('sample_rate', 16000)
+    logger.info(f"Sample rate: {sr}")
+    
     # Segment audio
     segmented_metadata = extract_segment_from_folder(
-        folder_path=str(raw_audio_dir),
-        output_folder=str(segment_dir),
-        config=config
+        output_dir=segment_dir,
+        input_csv=input_csv,
+        sr=sr
     )
     
     logger.info(f"Created {len(segmented_metadata)} segments")
