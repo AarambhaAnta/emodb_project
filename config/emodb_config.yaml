@@ -2,5 +2,9 @@
 BASE_DIR: '/Users/adityakumar/Developer/Projects/emodb_project'
 RAW_DATA_DIR: 'data/raw/emodb'
 CSV_DIR: 'data/csv'
+SEGMENT_DIR: 'data/processed/segment'
 # TODO: Will be implemented in future
 # LOG_DIR: 'output/logs'
+
+# Feature details
+SAMPLING_RATE: 16000

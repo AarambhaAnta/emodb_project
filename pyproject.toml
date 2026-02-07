@@ -17,6 +17,7 @@ dependencies = [
     "librosa",
     "tqdm",
     "pyyaml",
+    "matplotlib",
 ]
 
 [project.optional-dependencies]
