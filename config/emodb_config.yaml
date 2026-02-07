@@ -3,8 +3,17 @@ BASE_DIR: '/Users/adityakumar/Developer/Projects/emodb_project'
 RAW_DATA_DIR: 'data/raw/emodb'
 CSV_DIR: 'data/csv'
 SEGMENT_DIR: 'data/processed/segment'
+FEATURE_DIR: 'data/processed/features'
 # TODO: Will be implemented in future
 # LOG_DIR: 'output/logs'
 
 # Feature details
 SAMPLING_RATE: 16000
+
+# MFCC feature extraction parameters
+MFCC:
+  N_MFCC: 40
+  N_FFT: 512
+  HOP_LENGTH: 256
+  OUTPUT_DIR: 'data/processed/features/mfcc'
+  OUTPUT_CSV: 'data/csv/emodb_mfcc_features.csv'
