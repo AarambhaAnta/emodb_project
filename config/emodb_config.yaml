@@ -35,7 +35,7 @@ SEGMENTATION:
 # MFCC feature extraction parameters
 MFCC:
   N_MFCC: 40
-  N_FFT: 400  # 25ms window at 16kHz
+  N_FFT: 396  # 25ms window at 16kHz
   HOP_LENGTH: 80  # 5ms hop at 16kHz
   N_MELS: 40
   FMIN: 0.0
