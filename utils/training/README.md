@@ -48,6 +48,7 @@ python train_ecapa_models.py \
 ```
 
 ### Programmatic Usage
+
 ```python
 from utils.training import train_speaker_model, train_all_speakers
 from hyperpyyaml import load_hyperpyyaml
@@ -77,13 +78,16 @@ results = train_all_speakers(
 ## Architecture
 
 ### EmotionBrain Class
+
 Inherits from `sb.core.Brain` and implements:
+
 - `compute_forward()`: Load MFCC features and compute embeddings
 - `compute_objectives()`: Calculate loss and update metrics
 - `on_stage_start()`: Initialize metrics
 - `on_stage_end()`: Update validation error
 
 ### Data Flow
+
 1. Load MFCC features from .npy files
 2. Normalize and pad sequences
 3. Extract embeddings using ECAPA-TDNN
@@ -91,6 +95,7 @@ Inherits from `sb.core.Brain` and implements:
 5. Compute loss and update model
 
 ### Model Components
+
 - **Mean-Variance Normalization**: Global normalization of features
 - **ECAPA-TDNN**: Embedding extraction (192-dim embeddings)
 - **Classifier**: Emotion classification (7 classes)
@@ -98,7 +103,7 @@ Inherits from `sb.core.Brain` and implements:
 
 ## Output Structure
 
-```
+```bash
 output/models/
 ├── speaker_03/
 │   └── embedding_model.ckpt
@@ -113,6 +118,7 @@ output/models/
 ## Training Results
 
 The `training_results.json` file contains:
+
 ```json
 {
   "03": {
@@ -129,6 +135,7 @@ The `training_results.json` file contains:
 ## Hyperparameters
 
 Key parameters in `ecapa_hparams.yaml`:
+
 - **Batch size**: 8
 - **Learning rate**: 0.001
 - **Epochs**: 50
@@ -138,7 +145,7 @@ Key parameters in `ecapa_hparams.yaml`:
 
 ## Requirements
 
-```
+```bash
 torch
 speechbrain
 pandas
