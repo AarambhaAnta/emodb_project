@@ -85,56 +85,40 @@ def setup_logging(log_dir=None):
 
 
 def extract_metadata_stage(config, logger):
-    """
-    Stage 1: Extract metadata from audio files.
-    
-    Args:
-        config: Configuration dictionary
-        logger: Logger instance
-    """
-    logger.info("="*70)
+    """Extract metadata from audio files."""
+    logger.info("=" * 70)
     logger.info("STAGE 1: METADATA EXTRACTION")
-    logger.info("="*70)
+    logger.info("=" * 70)
     
-    raw_audio_dir = Path(config['BASE_DIR']) / config['PATHS']['RAW_DATA']
-    output_csv = Path(config['BASE_DIR']) / config['PATHS']['CSV'] / 'metadata.csv'
+    raw_audio_dir = os.path.join(config['BASE_DIR'], config['PATHS']['RAW_DATA'])
+    csv_dir = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'])
+    output_csv = os.path.join(csv_dir, 'metadata.csv')
     
     logger.info(f"Input directory: {raw_audio_dir}")
     logger.info(f"Output CSV: {output_csv}")
     
-    # Extract metadata
-    metadata = extract_metadata_from_folder(
-        folder_path=str(raw_audio_dir),
-        config=config
-    )
-    
+    # Extract metadata from all audio files
+    metadata = extract_metadata_from_folder(str(raw_audio_dir))
     logger.info(f"Extracted metadata for {len(metadata)} files")
     
-    # Save to CSV
-    output_csv.parent.mkdir(parents=True, exist_ok=True)
-    create_csv(metadata, str(output_csv))
+    # Save to CSV - FIX: Pass directory and filename separately
+    create_csv(metadata, csv_dir, 'metadata')
     
-    logger.info(f"Metadata saved to: {output_csv}")
-    logger.info("Stage 1 complete!\n")
+    logger.info(f"Saved metadata to: {output_csv}")
+    logger.info("")
     
-    return metadata
+    return output_csv
 
 
 def segment_audio_stage(config, logger):
-    """
-    Stage 2: Segment audio files.
-    
-    Args:
-        config: Configuration dictionary
-        logger: Logger instance
-    """
-    logger.info("="*70)
+    """Segment audio files."""
+    logger.info("=" * 70)
     logger.info("STAGE 2: AUDIO SEGMENTATION")
-    logger.info("="*70)
+    logger.info("=" * 70)
     
-    raw_audio_dir = Path(config['BASE_DIR']) / config['PATHS']['RAW_DATA']
-    segment_dir = Path(config['BASE_DIR']) / config['PATHS']['SEGMENT']
-    output_csv = Path(config['BASE_DIR']) / config['PATHS']['CSV'] / 'segmented_metadata.csv'
+    raw_audio_dir = os.path.join(config['BASE_DIR'], config['PATHS']['RAW_DATA'])
+    segment_dir = os.path.join(config['BASE_DIR'], config['PATHS']['SEGMENT'])
+    output_csv = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'], 'segmented_metadata.csv')
     
     logger.info(f"Input directory: {raw_audio_dir}")
     logger.info(f"Segment directory: {segment_dir}")
@@ -150,7 +134,8 @@ def segment_audio_stage(config, logger):
     logger.info(f"Created {len(segmented_metadata)} segments")
     
     # Save to CSV
-    create_csv(segmented_metadata, str(output_csv))
+    csv_dir = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'])
+    create_csv(segmented_metadata, csv_dir, 'segmented_metadata')
     
     logger.info(f"Segmented metadata saved to: {output_csv}")
     logger.info("Stage 2 complete!\n")
@@ -159,19 +144,13 @@ def segment_audio_stage(config, logger):
 
 
 def extract_mfcc_stage(config, logger):
-    """
-    Stage 3: Extract MFCC features.
-    
-    Args:
-        config: Configuration dictionary
-        logger: Logger instance
-    """
-    logger.info("="*70)
+    """Extract MFCC features."""
+    logger.info("=" * 70)
     logger.info("STAGE 3: MFCC FEATURE EXTRACTION")
-    logger.info("="*70)
+    logger.info("=" * 70)
     
-    input_csv = Path(config['BASE_DIR']) / config['PATHS']['CSV'] / 'segmented_metadata.csv'
-    features_dir = Path(config['BASE_DIR']) / config['PATHS']['FEATURES']
+    input_csv = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'], 'segmented_metadata.csv')
+    features_dir = os.path.join(config['BASE_DIR'], config['PATHS']['FEATURES'])
     
     logger.info(f"Input CSV: {input_csv}")
     logger.info(f"Features directory: {features_dir}")
@@ -197,19 +176,13 @@ def extract_mfcc_stage(config, logger):
 
 
 def create_loso_stage(config, logger):
-    """
-    Stage 4: Create LOSO (Leave-One-Speaker-Out) splits.
-    
-    Args:
-        config: Configuration dictionary
-        logger: Logger instance
-    """
-    logger.info("="*70)
+    """Create LOSO (Leave-One-Speaker-Out) splits."""
+    logger.info("=" * 70)
     logger.info("STAGE 4: LOSO SPLIT CREATION")
-    logger.info("="*70)
+    logger.info("=" * 70)
     
-    input_csv = Path(config['BASE_DIR']) / config['PATHS']['CSV'] / 'segmented_metadata.csv'
-    loso_dir = Path(config['BASE_DIR']) / config['PATHS']['LOSO']
+    input_csv = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'], 'segmented_metadata.csv')
+    loso_dir = os.path.join(config['BASE_DIR'], config['PATHS']['LOSO'])
     
     logger.info(f"Input CSV: {input_csv}")
     logger.info(f"LOSO directory: {loso_dir}")
@@ -228,18 +201,12 @@ def create_loso_stage(config, logger):
 
 
 def create_train_val_splits_stage(config, logger):
-    """
-    Stage 5: Create train/validation splits (80/20).
-    
-    Args:
-        config: Configuration dictionary
-        logger: Logger instance
-    """
-    logger.info("="*70)
+    """Create train/validation splits (80/20)."""
+    logger.info("=" * 70)
     logger.info("STAGE 5: TRAIN/VALIDATION SPLIT CREATION")
-    logger.info("="*70)
+    logger.info("=" * 70)
     
-    loso_dir = Path(config['BASE_DIR']) / config['PATHS']['LOSO']
+    loso_dir = os.path.join(config['BASE_DIR'], config['PATHS']['LOSO'])
     
     logger.info(f"LOSO directory: {loso_dir}")
     
@@ -248,17 +215,18 @@ def create_train_val_splits_stage(config, logger):
     logger.info(f"Train ratio: {train_ratio}")
     
     # Create train/val splits for all speakers
-    speakers = sorted([d.name for d in loso_dir.iterdir() if d.is_dir() and d.name.startswith('speaker_')])
+    loso_path = Path(loso_dir)
+    speakers = sorted([d.name for d in loso_path.iterdir() if d.is_dir() and d.name.startswith('speaker_')])
     
     logger.info(f"Creating train/val splits for {len(speakers)} speakers")
     
     for speaker in speakers:
         logger.info(f"Processing {speaker}...")
-        speaker_dir = loso_dir / speaker
+        speaker_dir = os.path.join(loso_dir, speaker)
         
         # Create train/val splits
         create_train_val_splits(
-            loso_dir=str(speaker_dir),
+            loso_dir=speaker_dir,
             config=config
         )
     
@@ -268,21 +236,14 @@ def create_train_val_splits_stage(config, logger):
 
 
 def train_models_stage(config, logger, speaker=None):
-    """
-    Stage 6: Train ECAPA-TDNN models.
-    
-    Args:
-        config: Configuration dictionary
-        logger: Logger instance
-        speaker: Specific speaker ID to train (e.g., "03"). If None, train all.
-    """
-    logger.info("="*70)
+    """Train ECAPA-TDNN models."""
+    logger.info("=" * 70)
     logger.info("STAGE 6: MODEL TRAINING")
-    logger.info("="*70)
+    logger.info("=" * 70)
     
-    loso_dir = Path(config['BASE_DIR']) / config['PATHS']['LOSO']
-    output_dir = Path(config['BASE_DIR']) / config['PATHS']['MODELS']
-    hparams_file = Path(config['BASE_DIR']) / 'config' / 'ecapa_hparams.yaml'
+    loso_dir = os.path.join(config['BASE_DIR'], config['PATHS']['LOSO'])
+    output_dir = os.path.join(config['BASE_DIR'], config['PATHS']['MODELS'])
+    hparams_file = os.path.join(config['BASE_DIR'], 'config', 'ecapa_hparams.yaml')
     
     logger.info(f"LOSO directory: {loso_dir}")
     logger.info(f"Output directory: {output_dir}")
