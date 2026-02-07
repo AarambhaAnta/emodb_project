@@ -31,8 +31,10 @@ class EmotionBrain(sb.core.Brain):
     
     def on_stage_start(self, stage, epoch=None):
         """Initialize metrics at the start of each stage."""
+        print(f"Stage {stage} starting (epoch {epoch})")
         if stage == sb.Stage.VALID:
             self.error_metrics = self.hparams.error_stats()
+            print("Initialized error_metrics for validation")
     
     def compute_forward(self, batch, stage):
         """
@@ -131,8 +133,12 @@ class EmotionBrain(sb.core.Brain):
     
     def on_stage_end(self, stage, stage_loss, epoch=None):
         """Update metrics at the end of each stage."""
+        print(f"Stage {stage} ending (epoch {epoch})")
         if stage == sb.Stage.VALID and self.error_metrics is not None:
             self.last_valid_error = self.error_metrics.summarize("average")
+            print(f"Validation error: {self.last_valid_error}")
+        elif stage == sb.Stage.VALID:
+            print("WARNING: error_metrics is None at end of validation stage!")
 
 
 def prepare_datasets(hparams, train_csv_path, val_csv_path, tmp_dir):
@@ -164,6 +170,12 @@ def prepare_datasets(hparams, train_csv_path, val_csv_path, tmp_dir):
     
     train_data = sb.dataio.dataset.DynamicItemDataset.from_csv(temp_train_csv)
     valid_data = sb.dataio.dataset.DynamicItemDataset.from_csv(temp_val_csv)
+    
+    # Verify datasets are not empty
+    if len(train_data) == 0:
+        raise ValueError(f"Training dataset is empty! Check {train_csv_path}")
+    if len(valid_data) == 0:
+        raise ValueError(f"Validation dataset is empty! Check {val_csv_path}")
     
     datasets = [train_data, valid_data]
     
@@ -214,11 +226,15 @@ def train_speaker_model(speaker_id, loso_dir, output_dir, hparams, run_opts, tmp
     train_csv = os.path.join(speaker_dir, "dev.csv")
     val_csv = os.path.join(speaker_dir, "train.csv")
     
-    if not os.path.exists(train_csv) or not os.path.exists(val_csv):
-        raise FileNotFoundError(f"Missing CSV files for speaker {speaker_id}")
+    if not os.path.exists(train_csv):
+        raise FileNotFoundError(f"Missing dev.csv for speaker {speaker_id}: {train_csv}")
+    if not os.path.exists(val_csv):
+        raise FileNotFoundError(f"Missing train.csv for speaker {speaker_id}: {val_csv}")
     
     # Prepare datasets
+    print(f"Loading datasets for speaker {speaker_id}...")
     train_data, valid_data = prepare_datasets(hparams, train_csv, val_csv, tmp_dir)
+    print(f"Train samples: {len(train_data)}, Valid samples: {len(valid_data)}")
     
     # Create output directory for this speaker
     speaker_output_dir = os.path.join(output_dir, f"speaker_{speaker_id}")
@@ -228,6 +244,7 @@ def train_speaker_model(speaker_id, loso_dir, output_dir, hparams, run_opts, tmp
     hparams["save_folder"] = speaker_output_dir
     
     # Initialize Brain
+    print(f"Initializing model for speaker {speaker_id}...")
     brain = EmotionBrain(
         modules=hparams["modules"],
         opt_class=hparams["opt_class"],
@@ -236,18 +253,27 @@ def train_speaker_model(speaker_id, loso_dir, output_dir, hparams, run_opts, tmp
         checkpointer=hparams["checkpointer"],
     )
     
-    
     # Train model
-    brain.fit(
-        epoch_counter=hparams["epoch_counter"],
-        train_set=train_data,
-        valid_set=valid_data,
-        train_loader_kwargs=hparams["dataloader_options"],
-        valid_loader_kwargs=hparams["dataloader_options"],
-    )
+    print(f"Starting training for speaker {speaker_id}...")
+    try:
+        brain.fit(
+            epoch_counter=hparams["epoch_counter"],
+            train_set=train_data,
+            valid_set=valid_data,
+            train_loader_kwargs=hparams["dataloader_options"],
+            valid_loader_kwargs=hparams["dataloader_options"],
+        )
+    except Exception as e:
+        print(f"ERROR during training for speaker {speaker_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
     
     # Get best validation error from last validation stage
     best_valid_error = brain.last_valid_error if brain.last_valid_error is not None else float('inf')
+    
+    if best_valid_error == float('inf'):
+        print(f"WARNING: Speaker {speaker_id} - No valid error recorded (validation may not have run)")
     
     return best_valid_error
 
@@ -259,7 +285,7 @@ def train_all_speakers(loso_dir=None, output_dir=None, hparams_file=None, run_op
     Args:
         loso_dir: Base LOSO directory
         output_dir: Output directory for models
-        hparams_file: Path to hyperparameters YAML file
+        hparams_file: Path to hyperparameters YAML file OR loaded hparams dict
         run_opts: Run options
     
     Returns:
@@ -273,6 +299,13 @@ def train_all_speakers(loso_dir=None, output_dir=None, hparams_file=None, run_op
     
     os.makedirs(output_dir, exist_ok=True)
     
+    # Get hparams file path if a dict was passed
+    if isinstance(hparams_file, dict):
+        # Extract the path from the loaded hparams or use default
+        hparams_path = '/Users/adityakumar/Developer/Projects/emodb_project/config/ecapa_hparams.yaml'
+    else:
+        hparams_path = hparams_file if hparams_file else '/Users/adityakumar/Developer/Projects/emodb_project/config/ecapa_hparams.yaml'
+    
     # Get all speaker directories
     speaker_dirs = sorted([d for d in os.listdir(loso_dir) if d.startswith('speaker_')])
     speakers = [d.replace('speaker_', '') for d in speaker_dirs]
@@ -285,11 +318,18 @@ def train_all_speakers(loso_dir=None, output_dir=None, hparams_file=None, run_op
         print(f"{'='*70}")
         
         try:
+            # Reload hyperparameters for EACH speaker to reset epoch counter
+            from hyperpyyaml import load_hyperpyyaml
+            print(f"Loading fresh hyperparameters for speaker {speaker_id}...")
+            with open(hparams_path) as f:
+                speaker_hparams = load_hyperpyyaml(f)
+            print(f"Epoch counter initialized: current={speaker_hparams['epoch_counter'].current}, limit={speaker_hparams['epoch_counter'].limit}")
+            
             best_error = train_speaker_model(
                 speaker_id=speaker_id,
                 loso_dir=loso_dir,
                 output_dir=output_dir,
-                hparams=hparams_file,
+                hparams=speaker_hparams,
                 run_opts=run_opts
             )
             
