@@ -10,7 +10,7 @@ This script creates a CSV file compatible with the LOSO stage by:
 Usage:
     python utils/features_extraction/create_mfcc_csv.py \
         --metadata data/csv/segmented_metadata.csv \
-        --features-dir data/processed/features \
+        --features-dir data/processed/features/mfcc \
         --output data/csv/emodb_mfcc_features.csv
 """
 
@@ -20,20 +20,58 @@ import numpy as np
 from pathlib import Path
 from tqdm import tqdm
 import os
+import sys
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
+try:
+    from utils.extract_config import get_config
+except ImportError:
+    # Fallback for direct script execution
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+    from utils.extract_config import get_config
 
 
-def create_mfcc_csv(metadata_csv, features_dir, output_csv):
+def create_mfcc_csv(metadata_csv=None, features_dir=None, output_csv=None, config=None):
     """
     Create MFCC features CSV from metadata and .npy files.
     
     Args:
-        metadata_csv: Path to segmented_metadata.csv
-        features_dir: Directory containing .npy MFCC files
-        output_csv: Output CSV path
+        metadata_csv: Path to segmented_metadata.csv (optional, uses config default)
+        features_dir: Directory containing .npy MFCC files (optional, uses config default)
+        output_csv: Output CSV path (optional, uses config default)
+        config: Configuration dictionary (optional, loads from config file)
         
     Returns:
         DataFrame with MFCC features information
     """
+    # Load config if not provided
+    if config is None:
+        config = get_config()
+    
+    # Set default paths from config
+    if metadata_csv is None:
+        metadata_csv = os.path.join(
+            config['BASE_DIR'],
+            config['PATHS']['CSV'],
+            'segmented_metadata.csv'
+        )
+    
+    if features_dir is None:
+        # Use MFCC OUTPUT_DIR which includes 'mfcc' subdirectory
+        features_dir = os.path.join(
+            config['BASE_DIR'],
+            config['MFCC']['OUTPUT_DIR']
+        )
+    
+    if output_csv is None:
+        output_csv = os.path.join(
+            config['BASE_DIR'],
+            config['PATHS']['CSV'],
+            'emodb_mfcc_features.csv'
+        )
+    
     print(f"Creating MFCC features CSV...")
     print(f"Metadata: {metadata_csv}")
     print(f"Features directory: {features_dir}")
@@ -41,8 +79,15 @@ def create_mfcc_csv(metadata_csv, features_dir, output_csv):
     print("=" * 70)
     
     # Read metadata
+    if not os.path.exists(metadata_csv):
+        raise FileNotFoundError(f"Metadata CSV not found: {metadata_csv}")
+    
     df = pd.read_csv(metadata_csv)
     print(f"✓ Loaded {len(df)} samples from metadata")
+    
+    # Check features directory exists
+    if not os.path.exists(features_dir):
+        raise FileNotFoundError(f"Features directory not found: {features_dir}")
     
     # Prepare columns
     mfcc_paths = []
@@ -107,20 +152,17 @@ def main():
     parser.add_argument(
         '--metadata',
         type=str,
-        default='data/csv/segmented_metadata.csv',
-        help='Path to segmented metadata CSV'
+        help='Path to segmented metadata CSV (default: from config)'
     )
     parser.add_argument(
         '--features-dir',
         type=str,
-        default='data/processed/features',
-        help='Directory containing .npy MFCC files'
+        help='Directory containing .npy MFCC files (default: from config, usually data/processed/features/mfcc)'
     )
     parser.add_argument(
         '--output',
         type=str,
-        default='data/csv/emodb_mfcc_features.csv',
-        help='Output CSV path'
+        help='Output CSV path (default: from config)'
     )
     
     args = parser.parse_args()
