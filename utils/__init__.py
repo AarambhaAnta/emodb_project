@@ -3,8 +3,8 @@ EmoDb utilities package for emotion analysis.
 """
 
 from .extract_config import get_config
-from .extract_metadata import parse_filename, extract_metadata, get_metadata,extract_metadata_from_folder,get_num_segments,get_segment,extract_segment_from_folder, EMOTION_MAPPING
-from .create_csv import create_csv
+from .audio_processing.extract_metadata import parse_filename, extract_metadata, get_metadata,extract_metadata_from_folder,get_num_segments,get_segment,extract_segment_from_folder, EMOTION_MAPPING
+from .audio_processing.create_csv import create_csv
 
 __all__ = [
     'get_config',
