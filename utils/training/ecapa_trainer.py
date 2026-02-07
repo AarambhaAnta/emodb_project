@@ -23,6 +23,12 @@ from tqdm import tqdm
 class EmotionBrain(sb.core.Brain):
     """Custom Brain class for emotion recognition training."""
     
+    def __init__(self, *args, **kwargs):
+        """Initialize EmotionBrain with error tracking."""
+        super().__init__(*args, **kwargs)
+        self.error_metrics = None
+        self.last_valid_error = None
+    
     def on_stage_start(self, stage, epoch=None):
         """Initialize metrics at the start of each stage."""
         if stage == sb.Stage.VALID:
@@ -118,14 +124,14 @@ class EmotionBrain(sb.core.Brain):
         
         loss = self.hparams.compute_cost(predictions, emo, lens)
         
-        if stage != sb.Stage.TRAIN:
+        if stage != sb.Stage.TRAIN and self.error_metrics is not None:
             self.error_metrics.append(batch.id, predictions, emo, lens)
         
         return loss
     
     def on_stage_end(self, stage, stage_loss, epoch=None):
         """Update metrics at the end of each stage."""
-        if stage == sb.Stage.VALID:
+        if stage == sb.Stage.VALID and self.error_metrics is not None:
             self.last_valid_error = self.error_metrics.summarize("average")
 
 
@@ -240,8 +246,8 @@ def train_speaker_model(speaker_id, loso_dir, output_dir, hparams, run_opts, tmp
         valid_loader_kwargs=hparams["dataloader_options"],
     )
     
-    # Get best validation error from metrics
-    best_valid_error = brain.error_metrics.summarize("average")
+    # Get best validation error from last validation stage
+    best_valid_error = brain.last_valid_error if brain.last_valid_error is not None else float('inf')
     
     return best_valid_error
 
