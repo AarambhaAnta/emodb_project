@@ -164,19 +164,17 @@ def extract_mfcc_stage(config, logger):
     logger.info(f"MFCC parameters: {mfcc_params}")
     
     # Extract MFCC features
-    successful, failed = extract_mfcc_from_dataset(
-        csv_path=str(input_csv),
-        output_dir=str(features_dir),
+    mfcc_df = extract_mfcc_from_dataset(
+        input_csv=input_csv,
+        output_dir=features_dir,
         config=config
     )
     
-    logger.info(f"Successfully extracted features: {successful}/{successful + failed}")
-    if failed > 0:
-        logger.warning(f"Failed extractions: {failed}")
+    logger.info(f"Successfully extracted {len(mfcc_df)} MFCC features")
     
     logger.info("Stage 3 complete!\n")
     
-    return successful, failed
+    return mfcc_df
 
 
 def create_loso_stage(config, logger):
@@ -185,7 +183,7 @@ def create_loso_stage(config, logger):
     logger.info("STAGE 4: LOSO SPLIT CREATION")
     logger.info("=" * 70)
     
-    input_csv = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'], 'segmented_metadata.csv')
+    input_csv = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'], 'emodb_mfcc_features.csv')
     loso_dir = os.path.join(config['BASE_DIR'], config['PATHS']['LOSO'])
     
     logger.info(f"Input CSV: {input_csv}")
