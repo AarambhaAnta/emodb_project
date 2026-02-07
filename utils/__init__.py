@@ -1,22 +1,29 @@
 """
 EmoDb utilities package for emotion analysis.
+
+This package provides utilities for:
+- Audio processing and metadata extraction
+- Feature extraction (MFCC)
+- LOSO cross-validation splits
+- Model training with ECAPA-TDNN
+
+Main entry points:
+- get_config(): Load configuration
+- Submodules: audio_processing, features_extraction, training
 """
 
 from .extract_config import get_config
-from .audio_processing.extract_metadata import parse_filename, extract_metadata, get_metadata,extract_metadata_from_folder,get_num_segments,get_segment,extract_segment_from_folder, EMOTION_MAPPING
-from .audio_processing.create_csv import create_csv
+
+# Expose submodules for organized access
+from . import audio_processing
+from . import features_extraction  
+from . import training
 
 __all__ = [
     'get_config',
-    'parse_filename',
-    'extract_metadata',
-    'get_metadata',
-    'extract_metadata_from_folder'
-    'get_num_segments'
-    'get_segment'
-    'extract_segment_from_folder'
-    'EMOTION_MAPPING',
-    'create_csv'
+    'audio_processing',
+    'features_extraction',
+    'training'
 ]
 
 __version__ = '0.1.0'
