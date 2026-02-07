@@ -19,6 +19,8 @@ if not hasattr(torchaudio, 'list_audio_backends'):
 import speechbrain as sb
 from tqdm import tqdm
 
+from ..extract_config import get_config, get_path
+
 
 class EmotionBrain(sb.core.Brain):
     """Custom Brain class for emotion recognition training."""
@@ -291,20 +293,25 @@ def train_all_speakers(loso_dir=None, output_dir=None, hparams_file=None, run_op
     Returns:
         results: Dictionary with training results for each speaker
     """
+    config = None
+    if loso_dir is None or output_dir is None or isinstance(hparams_file, dict) or hparams_file is None:
+        config = get_config()
+    
     if loso_dir is None:
-        loso_dir = '/Users/adityakumar/Developer/Projects/emodb_project/data/processed/loso'
+        loso_dir_path = config.get('LOSO', {}).get('OUTPUT_DIR', config.get('PATHS', {}).get('LOSO', 'data/processed/loso'))
+        loso_dir = get_path(config, loso_dir_path)
     
     if output_dir is None:
-        output_dir = '/Users/adityakumar/Developer/Projects/emodb_project/output/models'
+        output_dir_path = config.get('PATHS', {}).get('MODELS', 'output/models')
+        output_dir = get_path(config, output_dir_path)
     
     os.makedirs(output_dir, exist_ok=True)
     
     # Get hparams file path if a dict was passed
-    if isinstance(hparams_file, dict):
-        # Extract the path from the loaded hparams or use default
-        hparams_path = '/Users/adityakumar/Developer/Projects/emodb_project/config/ecapa_hparams.yaml'
+    if isinstance(hparams_file, dict) or hparams_file is None:
+        hparams_path = os.path.join(config['BASE_DIR'], 'config', 'ecapa_hparams.yaml')
     else:
-        hparams_path = hparams_file if hparams_file else '/Users/adityakumar/Developer/Projects/emodb_project/config/ecapa_hparams.yaml'
+        hparams_path = hparams_file
     
     # Get all speaker directories
     speaker_dirs = sorted([d for d in os.listdir(loso_dir) if d.startswith('speaker_')])
