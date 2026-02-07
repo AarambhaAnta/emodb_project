@@ -1,0 +1,16 @@
+# Development dependencies for emodb-utils
+# Install with: pip install -r requirements-dev.txt
+# This includes all core dependencies plus dev tools
+
+-r requirements.txt
+
+# Development tools
+pytest>=7.0.0
+black>=22.0.0
+flake8>=4.0.0
+ipython>=8.0.0
+
+# Jupyter support
+jupyter>=1.0.0
+ipykernel>=6.0.0
+notebook>=6.4.0

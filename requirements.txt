@@ -1,0 +1,16 @@
+# Core dependencies for emodb-utils
+# Generated from pyproject.toml
+# Install with: pip install -r requirements.txt
+
+pandas>=1.3.0
+librosa>=0.9.0
+tqdm>=4.60.0
+pyyaml>=5.4.0
+matplotlib>=3.3.0
+numpy>=1.19.0
+torch>=2.0.0
+torchaudio>=2.0.0
+speechbrain>=1.0.0
+soundfile>=0.12.0
+hyperpyyaml>=1.0.0
+scikit-learn>=0.24.0
