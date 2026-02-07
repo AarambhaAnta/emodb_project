@@ -154,7 +154,7 @@ def extract_mfcc_stage(config, logger):
     logger.info("=" * 70)
     
     input_csv = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'], 'segmented_metadata.csv')
-    features_dir = os.path.join(config['BASE_DIR'], config['PATHS']['FEATURES'])
+    features_dir = os.path.join(config['BASE_DIR'], config['MFCC']['OUTPUT_DIR'])
     
     logger.info(f"Input CSV: {input_csv}")
     logger.info(f"Features directory: {features_dir}")
@@ -216,25 +216,17 @@ def create_train_val_splits_stage(config, logger):
     train_ratio = config.get('LOSO', {}).get('train_ratio', 0.8)
     logger.info(f"Train ratio: {train_ratio}")
     
-    # Create train/val splits for all speakers
-    loso_path = Path(loso_dir)
-    speakers = sorted([d.name for d in loso_path.iterdir() if d.is_dir() and d.name.startswith('speaker_')])
+    # Create train/val splits for all speakers at once
+    splits_info = create_train_val_splits(
+        loso_dir=loso_dir,
+        config=config
+    )
     
-    logger.info(f"Creating train/val splits for {len(speakers)} speakers")
-    
-    for speaker in speakers:
-        logger.info(f"Processing {speaker}...")
-        speaker_dir = os.path.join(loso_dir, speaker)
-        
-        # Create train/val splits
-        create_train_val_splits(
-            loso_dir=speaker_dir,
-            config=config
-        )
+    logger.info(f"Created train/val splits for {len(splits_info)} speakers")
     
     logger.info("Stage 5 complete!\n")
     
-    return speakers
+    return list(splits_info.keys())
 
 
 def train_models_stage(config, logger, speaker=None):
@@ -243,9 +235,9 @@ def train_models_stage(config, logger, speaker=None):
     logger.info("STAGE 6: MODEL TRAINING")
     logger.info("=" * 70)
     
-    loso_dir = os.path.join(config['BASE_DIR'], config['PATHS']['LOSO'])
-    output_dir = os.path.join(config['BASE_DIR'], config['PATHS']['MODELS'])
-    hparams_file = os.path.join(config['BASE_DIR'], 'config', 'ecapa_hparams.yaml')
+    loso_dir = Path(config['BASE_DIR']) / config['PATHS']['LOSO']
+    output_dir = Path(config['BASE_DIR']) / config['PATHS']['MODELS']
+    hparams_file = Path(config['BASE_DIR']) / 'config' / 'ecapa_hparams.yaml'
     
     logger.info(f"LOSO directory: {loso_dir}")
     logger.info(f"Output directory: {output_dir}")

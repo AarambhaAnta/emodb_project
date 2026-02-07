@@ -44,12 +44,15 @@ def create_train_val_splits(loso_dir=None, train_ratio=None, random_state=None, 
             
     File Structure Modified:
         loso/speaker_XX/
-        ├── other/          # Original training data (not modified)
-        ├── dev/            # 80% training data
+        ├── other/          # Original training data from LOSO (all other speakers)
         │   ├── *.npy
-        ├── train/          # 20% validation data
+        ├── dev/            # 80% training data (split from other/)
         │   ├── *.npy
-        ├── test/           # Original test data (not modified)
+        ├── train/          # 20% validation data (split from other/)
+        │   ├── *.npy
+        ├── test/           # Original test data (this speaker)
+        │   ├── *.npy
+        ├── other.csv       # Original training metadata (not modified)
         ├── dev.csv         # 80% training metadata
         ├── train.csv       # 20% validation metadata (for SpeechBrain compatibility)
         └── test.csv        # Original test metadata
@@ -91,7 +94,7 @@ def create_train_val_splits(loso_dir=None, train_ratio=None, random_state=None, 
     
     for speaker_dir in tqdm(speaker_dirs, desc="Creating train/val splits"):
         speaker_path = os.path.join(loso_dir, speaker_dir)
-        train_csv_path = os.path.join(speaker_path, 'train.csv')
+        train_csv_path = os.path.join(speaker_path, 'other.csv')
         
         if not os.path.exists(train_csv_path):
             print(f"Warning: {train_csv_path} not found, skipping...")

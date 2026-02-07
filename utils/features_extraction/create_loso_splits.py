@@ -112,7 +112,7 @@ def create_loso_splits(input_csv=None, output_dir=None, config=None):
         
         # Save training CSV
         train_csv = pd.DataFrame(train_rows)
-        train_csv_path = os.path.join(speaker_dir, "train.csv")
+        train_csv_path = os.path.join(speaker_dir, "other.csv")
         train_csv.to_csv(train_csv_path, index=False)
         
         # Copy MFCC files for TEST set (this speaker)
