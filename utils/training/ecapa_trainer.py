@@ -21,6 +21,11 @@ from tqdm import tqdm
 
 from ..extract_config import get_config, get_path
 
+# ANSI colors for console output
+RED = "\033[0;31m"
+BLUE = "\033[0;34m"
+NC = "\033[0m"
+
 
 class EmotionBrain(sb.core.Brain):
     """Custom Brain class for emotion recognition training."""
@@ -139,6 +144,12 @@ class EmotionBrain(sb.core.Brain):
         if stage == sb.Stage.VALID and self.error_metrics is not None:
             self.last_valid_error = self.error_metrics.summarize("average")
             print(f"Validation error: {self.last_valid_error}")
+            if getattr(self, "checkpointer", None) is not None:
+                self.checkpointer.save_and_keep_only(
+                    meta={"error": self.last_valid_error},
+                    min_keys=["error"],
+                    keep_recent=False,
+                )
         elif stage == sb.Stage.VALID:
             print("WARNING: error_metrics is None at end of validation stage!")
 
@@ -244,6 +255,17 @@ def train_speaker_model(speaker_id, loso_dir, output_dir, hparams, run_opts, tmp
     
     # Update save folder in hparams for checkpointer
     hparams["save_folder"] = speaker_output_dir
+    # Rebuild checkpointer per speaker to avoid loading from temp paths
+    if "checkpointer" in hparams and hparams["checkpointer"] is not None:
+        hparams["checkpointer"] = sb.utils.checkpoints.Checkpointer(
+            checkpoints_dir=speaker_output_dir,
+            recoverables={
+                "embedding_model": hparams["embedding_model"],
+                "classifier": hparams["classifier"],
+                "normalizer": hparams["mean_var_norm"],
+                "counter": hparams["epoch_counter"],
+            },
+        )
     
     # Initialize Brain
     print(f"Initializing model for speaker {speaker_id}...")
@@ -276,6 +298,19 @@ def train_speaker_model(speaker_id, loso_dir, output_dir, hparams, run_opts, tmp
     
     if best_valid_error == float('inf'):
         print(f"WARNING: Speaker {speaker_id} - No valid error recorded (validation may not have run)")
+    
+    # Save a single consolidated model file per speaker
+    model_path = os.path.join(speaker_output_dir, "model.pt")
+    torch.save(
+        {
+            "embedding_model": hparams["embedding_model"].state_dict(),
+            "classifier": hparams["classifier"].state_dict(),
+            "normalizer": hparams["mean_var_norm"].state_dict(),
+            "speaker_id": speaker_id,
+        },
+        model_path,
+    )
+    print(f"Saved model to: {model_path}")
     
     return best_valid_error
 
@@ -320,9 +355,9 @@ def train_all_speakers(loso_dir=None, output_dir=None, hparams_file=None, run_op
     results = {}
     
     for speaker_id in tqdm(speakers, desc="Training speakers"):
-        print(f"\n{'='*70}")
-        print(f"Training speaker {speaker_id}")
-        print(f"{'='*70}")
+        print(f"\n{BLUE}{'='*70}{NC}")
+        print(f"{RED}Training speaker {speaker_id}{NC}")
+        print(f"{BLUE}{'='*70}{NC}")
         
         try:
             # Reload hyperparameters for EACH speaker to reset epoch counter
@@ -345,7 +380,7 @@ def train_all_speakers(loso_dir=None, output_dir=None, hparams_file=None, run_op
                 'best_error': best_error
             }
             
-            print(f"✓ Speaker {speaker_id} - Best error: {best_error:.4f}")
+            print(f"{RED}✓ Speaker {speaker_id} - Best error: {best_error:.4f}{NC}")
             
         except Exception as e:
             results[speaker_id] = {

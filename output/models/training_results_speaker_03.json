@@ -1,7 +1,0 @@
-{
-  "speaker_03": {
-    "status": "success",
-    "best_error": 0.47252747416496277,
-    "model_path": "/Users/adityakumar/Developer/Projects/emodb_project/output/models/speaker_03/CKPT+*"
-  }
-}

@@ -26,6 +26,7 @@ dataloader_options:
     batch_size: !ref <batch_size>
     num_workers: !ref <num_workers>
     shuffle: True
+    drop_last: True
 
 # Epoch counter
 epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
