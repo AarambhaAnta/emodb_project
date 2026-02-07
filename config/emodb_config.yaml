@@ -1,19 +1,54 @@
-# Define paths
+# Base directory (auto-detected from project root)
 BASE_DIR: '/Users/adityakumar/Developer/Projects/emodb_project'
-RAW_DATA_DIR: 'data/raw/emodb'
-CSV_DIR: 'data/csv'
-SEGMENT_DIR: 'data/processed/segment'
-FEATURE_DIR: 'data/processed/features'
-# TODO: Will be implemented in future
-# LOG_DIR: 'output/logs'
 
-# Feature details
-SAMPLING_RATE: 16000
+# Data paths (relative to BASE_DIR)
+PATHS:
+  RAW_DATA: 'data/raw/emodb'
+  CSV: 'data/csv'
+  SEGMENT: 'data/processed/segment'
+  FEATURES: 'data/processed/features'
+  LOSO: 'data/processed/loso'
+  MODELS: 'output/models'
+  LOGS: 'output/logs'
+  RESULTS: 'output/results'
+
+# Audio processing parameters
+AUDIO:
+  SAMPLING_RATE: 16000
+  
+# Emotion label mapping (EmoDb to numeric)
+EMOTION_MAPPING:
+  'W': 2  # Wut (anger)
+  'L': 4  # Langeweile (boredom)
+  'E': 5  # Ekel (disgust)
+  'A': 3  # Angst (fear/anxiety)
+  'F': 0  # Freude (happiness)
+  'T': 6  # Trauer (sadness)
+  'N': 1  # Neutral
+
+# Segmentation parameters
+SEGMENTATION:
+  MIN_DURATION_2_SEGMENTS: 2  # seconds
+  MIN_DURATION_3_SEGMENTS: 4  # seconds
+  MIN_DURATION_4_SEGMENTS: 6  # seconds
 
 # MFCC feature extraction parameters
 MFCC:
   N_MFCC: 40
-  N_FFT: 512
-  HOP_LENGTH: 256
+  N_FFT: 400  # 25ms window at 16kHz
+  HOP_LENGTH: 80  # 5ms hop at 16kHz
+  N_MELS: 40
+  FMIN: 0.0
+  FMAX: 8000  # sr/2 for 16kHz
+  MAX_LENGTH: 32000  # 2 seconds at 16kHz
+  NORMALIZE: true
+  HTK: true
+  NORM: 'ortho'
   OUTPUT_DIR: 'data/processed/features/mfcc'
   OUTPUT_CSV: 'data/csv/emodb_mfcc_features.csv'
+
+# LOSO cross-validation configuration
+LOSO:
+  OUTPUT_DIR: 'data/processed/loso'
+  TRAIN_RATIO: 0.8  # 80% train, 20% validation
+  RANDOM_STATE: 42  # For reproducibility

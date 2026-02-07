@@ -1,0 +1,84 @@
+# %YAML 1.2
+
+# Seed for reproducibility
+seed: 1234
+__set_seed: !apply:torch.manual_seed [!ref <seed>]
+
+# Data parameters
+batch_size: 8
+num_workers: 0  # Set to 0 for Python 3.13 compatibility
+
+# Feature parameters
+n_mels: 40
+sample_rate: 16000
+
+# Model parameters
+embedding_dim: 192
+num_classes: 7
+
+# Training parameters
+number_of_epochs: 2
+lr: 0.001
+weight_decay: 0.0001
+
+# Data loader options
+dataloader_options:
+    batch_size: !ref <batch_size>
+    num_workers: !ref <num_workers>
+    shuffle: True
+
+# Epoch counter
+epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
+    limit: !ref <number_of_epochs>
+
+# Mean and variance normalization
+mean_var_norm: !new:speechbrain.processing.features.InputNormalization
+    norm_type: global
+
+# ECAPA-TDNN model
+embedding_model: !new:speechbrain.lobes.models.ECAPA_TDNN.ECAPA_TDNN
+    input_size: !ref <n_mels>
+    channels: [1024, 1024, 1024, 1024, 3072]
+    kernel_sizes: [5, 3, 3, 3, 1]
+    dilations: [1, 2, 3, 4, 1]
+    attention_channels: 128
+    lin_neurons: !ref <embedding_dim>
+
+# Classifier
+classifier: !new:speechbrain.lobes.models.ECAPA_TDNN.Classifier
+    input_size: !ref <embedding_dim>
+    out_neurons: !ref <num_classes>
+
+# Modules
+modules:
+    mean_var_norm: !ref <mean_var_norm>
+    embedding_model: !ref <embedding_model>
+    classifier: !ref <classifier>
+
+# Optimizer
+opt_class: !name:torch.optim.Adam
+    lr: !ref <lr>
+    weight_decay: !ref <weight_decay>
+
+# Loss function
+compute_cost: !new:speechbrain.nnet.losses.LogSoftmaxWrapper
+    loss_fn: !new:speechbrain.nnet.losses.AdditiveAngularMargin
+        margin: 0.2
+        scale: 30
+
+# Error statistics
+error_stats: !name:speechbrain.utils.metric_stats.MetricStats
+    metric: !name:speechbrain.nnet.losses.classification_error
+        reduction: batch
+
+# Checkpointer (saves best model based on validation error)
+checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
+    checkpoints_dir: !ref <save_folder>
+    recoverables:
+        embedding_model: !ref <embedding_model>
+        classifier: !ref <classifier>
+        normalizer: !ref <mean_var_norm>
+        counter: !ref <epoch_counter>
+
+# Save folder (will be set dynamically in training script)
+save_folder: ./output/models/temp
