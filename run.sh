@@ -52,11 +52,18 @@ usage() {
     echo "  all              - Run complete pipeline (preprocessing + training)"
     echo "  preprocess       - Run preprocessing only (metadata, segment, MFCC)"
     echo "  prepare          - Prepare data (LOSO + train/val splits)"
-    echo "  train            - Train all models"
-    echo "  train-speaker N  - Train specific speaker (e.g., train-speaker 03)"
+    echo "  train            - Train all ECAPA-TDNN models"
+    echo "  train-speaker N  - Train ECAPA-TDNN for specific speaker (e.g., train-speaker 03)"
+    echo "  train-lda        - Train all LDA models"
+    echo "  train-lda-speaker N - Train LDA for specific speaker (e.g., train-lda-speaker 03)"
+    echo "  train-plda       - Train all PLDA models"
+    echo "  train-plda-speaker N - Train PLDA for specific speaker (e.g., train-plda-speaker 03)"
+    echo "  extract-embeddings - Extract embeddings for all speakers"
+    echo "  extract-embeddings-speaker N - Extract embeddings for specific speaker"
     echo "  metadata         - Extract metadata only"
     echo "  segment          - Segment audio only"
     echo "  mfcc             - Extract MFCC features only"
+    echo "  create-mfcc-csv  - Create MFCC features CSV from .npy files"
     echo "  loso             - Create LOSO splits only"
     echo "  splits           - Create train/val splits only"
     echo "  verify           - Verify installation"
@@ -65,7 +72,12 @@ usage() {
     echo "Examples:"
     echo "  ./run.sh all                # Run complete pipeline"
     echo "  ./run.sh preprocess         # Preprocessing only"
-    echo "  ./run.sh train-speaker 03   # Train speaker 03"
+    echo "  ./run.sh create-mfcc-csv    # Create MFCC CSV from .npy files"
+    echo "  ./run.sh train-speaker 03   # Train ECAPA-TDNN for speaker 03"
+    echo "  ./run.sh train-lda          # Train all LDA models"
+    echo "  ./run.sh train-lda-speaker 03  # Train LDA for speaker 03"
+    echo "  ./run.sh extract-embeddings-speaker 03  # Extract embeddings for speaker 03"
+    echo "  ./run.sh train-plda-speaker 03  # Train PLDA for speaker 03"
 }
 
 # Parse command
@@ -98,9 +110,48 @@ case "$COMMAND" in
     
     train-speaker)
         SPEAKER="${2:-03}"
-        print_header "Training Speaker $SPEAKER"
+        print_header "Training ECAPA-TDNN for Speaker $SPEAKER"
         python main.py --train --speaker "$SPEAKER"
-        print_success "Training complete for speaker $SPEAKER!"
+        print_success "ECAPA-TDNN training complete for speaker $SPEAKER!"
+        ;;
+    
+    train-lda)
+        print_header "Training LDA Models for All Speakers"
+        python train_lda_models.py --all
+        print_success "LDA training complete!"
+        ;;
+    
+    train-lda-speaker)
+        SPEAKER="${2:-03}"
+        print_header "Training LDA for Speaker $SPEAKER"
+        python train_lda_models.py --speaker "$SPEAKER"
+        print_success "LDA training complete for speaker $SPEAKER!"
+        ;;
+    
+    extract-embeddings)
+        print_header "Extracting Embeddings for All Speakers"
+        python utils/features_extraction/extract_embeddings.py --all
+        print_success "Embedding extraction complete!"
+        ;;
+    
+    extract-embeddings-speaker)
+        SPEAKER="${2:-03}"
+        print_header "Extracting Embeddings for Speaker $SPEAKER"
+        python utils/features_extraction/extract_embeddings.py --speaker "$SPEAKER"
+        print_success "Embedding extraction complete for speaker $SPEAKER!"
+        ;;
+    
+    train-plda)
+        print_header "Training PLDA Models for All Speakers"
+        python train_plda_models.py --all
+        print_success "PLDA training complete!"
+        ;;
+    
+    train-plda-speaker)
+        SPEAKER="${2:-03}"
+        print_header "Training PLDA for Speaker $SPEAKER"
+        python train_plda_models.py --speaker "$SPEAKER"
+        print_success "PLDA training complete for speaker $SPEAKER!"
         ;;
     
     metadata)
@@ -119,6 +170,12 @@ case "$COMMAND" in
         print_header "Extracting MFCC Features"
         python main.py --mfcc
         print_success "MFCC extraction complete!"
+        ;;
+    
+    create-mfcc-csv)
+        print_header "Creating MFCC Features CSV"
+        python utils/features_extraction/create_mfcc_csv.py
+        print_success "MFCC CSV created!"
         ;;
     
     loso)
