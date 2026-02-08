@@ -6,6 +6,8 @@ from .emotion_testing import (
     average_emotion_embeddings_for_speaker,
     average_test_embeddings_for_all,
     average_test_embeddings_for_speaker,
+    build_test_noavg_for_all,
+    build_test_noavg_for_speaker,
     test_speaker_emotions,
     test_all_speakers
 )
@@ -20,6 +22,8 @@ __all__ = [
     "average_emotion_embeddings_for_speaker",
     "average_test_embeddings_for_all",
     "average_test_embeddings_for_speaker",
+    "build_test_noavg_for_all",
+    "build_test_noavg_for_speaker",
     "score_all_speakers_plda",
     "score_speaker_plda",
     "test_speaker_emotions",

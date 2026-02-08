@@ -149,6 +149,49 @@ class EmotionCentroidTester:
 
         return summary_csv
 
+    def build_test_embeddings_noavg(self, speaker_id, output_base=None):
+        """Build test CSV without averaging parts; one row per segment per emotion."""
+        speaker_dir = self.embeddings_dir / f"speaker_{speaker_id}"
+        test_csv = speaker_dir / "test_embeddings.csv"
+        if not test_csv.exists():
+            raise FileNotFoundError(f"Test embeddings CSV not found: {test_csv}")
+
+        df = pd.read_csv(test_csv)
+        if "embedding" not in df.columns:
+            raise ValueError(f"Missing 'embedding' column in {test_csv}")
+
+        output_root = Path(output_base) if output_base else self.test_out_dir
+        out_dir = output_root / f"speaker_{speaker_id}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        rows = []
+        for _, row in df.iterrows():
+            sample_id = row.get("id")
+            label = row.get("label")
+            emb_path = _resolve_path(self.base_dir, row["embedding"])
+            if not sample_id or emb_path is None:
+                continue
+            for emotion_id in sorted(EMOTION_LABELS.keys()):
+                emotion_path = self.train_out_dir / f"speaker_{speaker_id}" / "train" / f"emotion_{emotion_id}.npy"
+                if pd.isna(label):
+                    gt_value = None
+                else:
+                    gt_value = 1 if int(emotion_id) == int(label) else 0
+                rows.append({
+                    "id": str(sample_id),
+                    "embedding_path": str(emb_path),
+                    "emotion_path": str(emotion_path),
+                    "ground_truth": gt_value
+                })
+
+        if not rows:
+            raise ValueError(f"No rows created from {test_csv}")
+
+        summary_csv = out_dir / "test_noavg_embeddings.csv"
+        pd.DataFrame(rows).to_csv(summary_csv, index=False)
+
+        return summary_csv
+
     def average_test_embeddings(self, speaker_id, output_base=None):
         """Average test embeddings by base id and save to data/testing/speaker_{id}/test."""
         speaker_dir = self.embeddings_dir / f"speaker_{speaker_id}"
@@ -436,6 +479,45 @@ def average_test_embeddings_for_all(
         speaker_id = speaker_dir.replace("speaker_", "")
         try:
             outputs[speaker_id] = tester.average_test_embeddings(speaker_id, output_base=output_base)
+        except Exception as exc:
+            outputs[speaker_id] = {"error": str(exc)}
+
+    return outputs
+
+
+def build_test_noavg_for_speaker(
+    speaker_id,
+    base_dir=None,
+    embeddings_dir=None,
+    output_base=None
+):
+    tester = EmotionCentroidTester(
+        base_dir=base_dir,
+        embeddings_dir=embeddings_dir
+    )
+    return tester.build_test_embeddings_noavg(speaker_id, output_base=output_base)
+
+
+def build_test_noavg_for_all(
+    base_dir=None,
+    embeddings_dir=None,
+    output_base=None
+):
+    tester = EmotionCentroidTester(
+        base_dir=base_dir,
+        embeddings_dir=embeddings_dir
+    )
+
+    if not tester.embeddings_dir.exists():
+        raise FileNotFoundError(f"Embeddings directory not found: {tester.embeddings_dir}")
+
+    speaker_dirs = sorted([d.name for d in tester.embeddings_dir.iterdir() if d.is_dir() and d.name.startswith("speaker_")])
+    outputs = {}
+
+    for speaker_dir in speaker_dirs:
+        speaker_id = speaker_dir.replace("speaker_", "")
+        try:
+            outputs[speaker_id] = tester.build_test_embeddings_noavg(speaker_id, output_base=output_base)
         except Exception as exc:
             outputs[speaker_id] = {"error": str(exc)}
 

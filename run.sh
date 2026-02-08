@@ -62,12 +62,16 @@ usage() {
     echo "  train-plda-speaker N - Train PLDA for specific speaker (e.g., train-plda-speaker 03)"
     echo "  train-plda-dev     - Train PLDA on dev embeddings for all speakers"
     echo "  train-plda-dev-speaker N - Train PLDA on dev embeddings for specific speaker"
+    echo "  train-plda-other     - Train PLDA on other embeddings for all speakers"
+    echo "  train-plda-other-speaker N - Train PLDA on other embeddings for specific speaker"
     echo "  extract-embeddings - Extract embeddings for all speakers"
     echo "  extract-embeddings-speaker N - Extract embeddings for specific speaker"
     echo "  avg-embeddings     - Average train embeddings per emotion for all speakers"
     echo "  avg-embeddings-speaker N - Average train embeddings for a speaker"
     echo "  avg-test-embeddings     - Average test embeddings by base id for all speakers"
     echo "  avg-test-embeddings-speaker N - Average test embeddings by base id for a speaker"
+    echo "  test-noavg        - Build test CSV without averaging"
+    echo "  test-noavg-speaker N - Build test CSV without averaging for a speaker"
     echo "  score-plda        - PLDA scoring for all speakers"
     echo "  score-plda-speaker N - PLDA scoring for a speaker"
     echo "  metadata         - Extract metadata only"
@@ -89,13 +93,17 @@ usage() {
     echo "  ./run.sh extract-embeddings-speaker 03  # Extract embeddings for speaker 03"
     echo "  ./run.sh train-plda-speaker 03  # Train PLDA for speaker 03"
     echo "  ./run.sh train-plda-dev        # Train PLDA on dev embeddings"
-        echo "  ./run.sh train-other        # Train ECAPA on other.csv for all speakers"
-        echo "  ./run.sh train-other-speaker 03  # Train ECAPA on other.csv for speaker 03"
+    echo "  ./run.sh train-other        # Train ECAPA on other.csv for all speakers"
+    echo "  ./run.sh train-other-speaker 03  # Train ECAPA on other.csv for speaker 03"
     echo "  ./run.sh train-plda-dev-speaker 03  # Train PLDA on dev embeddings for speaker 03"
+    echo "  ./run.sh train-plda-other        # Train PLDA on other embeddings"
+    echo "  ./run.sh train-plda-other-speaker 03  # Train PLDA on other embeddings for speaker 03"
     echo "  ./run.sh avg-embeddings    # Average train embeddings per emotion"
     echo "  ./run.sh avg-embeddings-speaker 03  # Average train embeddings for speaker 03"
     echo "  ./run.sh avg-test-embeddings    # Average test embeddings by base id"
     echo "  ./run.sh avg-test-embeddings-speaker 03  # Average test embeddings for speaker 03"
+    echo "  ./run.sh test-noavg    # Build test CSV without averaging"
+    echo "  ./run.sh test-noavg-speaker 03  # Build test CSV without averaging for speaker 03"
     echo "  ./run.sh score-plda    # PLDA scoring for all speakers"
     echo "  ./run.sh score-plda-speaker 03  # PLDA scoring for speaker 03"
 }
@@ -200,6 +208,19 @@ case "$COMMAND" in
         print_success "PLDA training complete for speaker $SPEAKER (dev embeddings)!"
         ;;
 
+    train-plda-other)
+        print_header "Training PLDA Models (Other Embeddings)"
+        python train_plda_models.py --all --embeddings-dir data/embeddings_other
+        print_success "PLDA training complete (other embeddings)!"
+        ;;
+
+    train-plda-other-speaker)
+        SPEAKER="${2:-03}"
+        print_header "Training PLDA for Speaker $SPEAKER (Other Embeddings)"
+        python train_plda_models.py --speaker "$SPEAKER" --embeddings-dir data/embeddings_other
+        print_success "PLDA training complete for speaker $SPEAKER (other embeddings)!"
+        ;;
+
     avg-embeddings)
         print_header "Averaging Train Embeddings per Emotion"
         python - <<'PY'
@@ -244,6 +265,29 @@ average_test_embeddings_for_speaker("$SPEAKER")
 print("Test embedding averaging complete for speaker $SPEAKER")
 PY
         print_success "Test embedding averaging complete for speaker $SPEAKER!"
+        ;;
+
+    test-noavg)
+        print_header "Building Test CSV Without Averaging"
+        python - <<'PY'
+from utils.testing import build_test_noavg_for_all
+
+build_test_noavg_for_all()
+print("Test CSV build complete")
+PY
+        print_success "Test CSV (no averaging) complete!"
+        ;;
+
+    test-noavg-speaker)
+        SPEAKER="${2:-03}"
+        print_header "Building Test CSV Without Averaging for Speaker $SPEAKER"
+        python - <<PY
+from utils.testing import build_test_noavg_for_speaker
+
+build_test_noavg_for_speaker("$SPEAKER")
+print("Test CSV build complete for speaker $SPEAKER")
+PY
+        print_success "Test CSV (no averaging) complete for speaker $SPEAKER!"
         ;;
 
     score-plda)
