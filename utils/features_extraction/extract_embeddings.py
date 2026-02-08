@@ -61,7 +61,7 @@ def load_ecapa_model(model_dir, hparams_file=None):
         print(f"  Loading consolidated model: {model_path.name}")
         payload = torch.load(model_path, map_location='cpu')
         embedding_model.load_state_dict(payload['embedding_model'])
-        mean_var_norm.load_state_dict(payload['normalizer'])
+        mean_var_norm.load_state_dict(payload['normalizer'], strict=False)
     else:
         # Fall back to SpeechBrain checkpoints
         checkpoint_dirs = list(Path(model_dir).glob('CKPT+*'))
@@ -78,7 +78,7 @@ def load_ecapa_model(model_dir, hparams_file=None):
                 raise FileNotFoundError(f"Missing embedding_model.ckpt in {checkpoint_path}")
             
             if norm_ckpt.exists():
-                mean_var_norm.load_state_dict(torch.load(norm_ckpt, map_location='cpu'))
+                mean_var_norm.load_state_dict(torch.load(norm_ckpt, map_location='cpu'), strict=False)
             else:
                 raise FileNotFoundError(f"Missing normalizer.ckpt in {checkpoint_path}")
         else:
@@ -141,7 +141,8 @@ def extract_embeddings_from_csv(
     model_dir,
     output_dir,
     hparams_file=None,
-    device='cpu'
+    device='cpu',
+    output_csv_path=None
 ):
     """
     Extract embeddings for all samples in a CSV file.
@@ -216,9 +217,11 @@ def extract_embeddings_from_csv(
     output_df = output_df[output_df['embedding'].notna()]
     
     # Save output CSV
-    output_csv = csv_path.replace('.csv', '_embeddings.csv')
-    if output_dir != os.path.dirname(csv_path):
-        output_csv = os.path.join(output_dir, os.path.basename(output_csv))
+    output_csv = output_csv_path
+    if output_csv is None:
+        output_csv = csv_path.replace('.csv', '_embeddings.csv')
+        if output_dir != os.path.dirname(csv_path):
+            output_csv = os.path.join(output_dir, os.path.basename(output_csv))
     
     output_df.to_csv(output_csv, index=False)
     
@@ -240,7 +243,7 @@ def extract_embeddings_for_speaker(
     device='cpu'
 ):
     """
-    Extract embeddings for a single speaker's train and validation sets.
+    Extract embeddings for a single speaker's LOSO splits.
     
     Args:
         speaker_id: Speaker ID (e.g., '03')
@@ -251,8 +254,7 @@ def extract_embeddings_for_speaker(
         device: Device to run on
     
     Returns:
-        train_emb_csv: Path to training embeddings CSV
-        val_emb_csv: Path to validation embeddings CSV
+        results: Dict of split name to embeddings CSV path
     """
     print(f"\n{'='*70}")
     print(f"Extracting Embeddings for Speaker {speaker_id}")
@@ -265,43 +267,36 @@ def extract_embeddings_for_speaker(
     if not os.path.exists(speaker_model_dir):
         raise FileNotFoundError(f"Model directory not found: {speaker_model_dir}")
     
-    # Extract training set embeddings
-    train_csv = os.path.join(speaker_loso_dir, "dev.csv")
-    train_output_dir = os.path.join(speaker_output_dir, "train")
+    results = {}
+    splits = {
+        "other": "other.csv",
+        "dev": "dev.csv",
+        "train": "train.csv",
+        "test": "test.csv",
+    }
     
-    if os.path.exists(train_csv):
-        print(f"\nTraining Set:")
-        train_emb_csv = extract_embeddings_from_csv(
-            train_csv,
-            speaker_model_dir,
-            train_output_dir,
-            hparams_file,
-            device
-        )
-    else:
-        raise FileNotFoundError(f"Training CSV not found: {train_csv}")
-    
-    # Extract validation set embeddings
-    val_csv = os.path.join(speaker_loso_dir, "train.csv")
-    val_output_dir = os.path.join(speaker_output_dir, "val")
-    
-    if os.path.exists(val_csv):
-        print(f"\nValidation Set:")
-        val_emb_csv = extract_embeddings_from_csv(
-            val_csv,
-            speaker_model_dir,
-            val_output_dir,
-            hparams_file,
-            device
-        )
-    else:
-        raise FileNotFoundError(f"Validation CSV not found: {val_csv}")
+    for split_name, csv_name in splits.items():
+        split_csv = os.path.join(speaker_loso_dir, csv_name)
+        split_output_dir = os.path.join(speaker_output_dir, split_name)
+        
+        if os.path.exists(split_csv):
+            print(f"\n{split_name.capitalize()} Set:")
+            results[split_name] = extract_embeddings_from_csv(
+                split_csv,
+                speaker_model_dir,
+                split_output_dir,
+                hparams_file,
+                device,
+                output_csv_path=os.path.join(speaker_output_dir, f"{split_name}_embeddings.csv")
+            )
+        else:
+            print(f"  Warning: {split_name} CSV not found: {split_csv}")
     
     print(f"\n{'='*70}")
     print(f"✓ Speaker {speaker_id} embeddings extracted")
     print(f"{'='*70}")
     
-    return train_emb_csv, val_emb_csv
+    return results
 
 
 def main():
@@ -334,8 +329,8 @@ def main():
     parser.add_argument(
         '--output-dir',
         type=str,
-        default='data/processed/embeddings',
-        help='Output directory for embeddings'
+        default='data/embeddings',
+        help='Output directory for embeddings (mirrors LOSO structure)'
     )
     parser.add_argument(
         '--hparams',
