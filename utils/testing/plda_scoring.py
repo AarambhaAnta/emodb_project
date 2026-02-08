@@ -208,21 +208,6 @@ def score_speaker_plda(
     results_dir = results_dir / f"speaker_{speaker_id}"
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    rows = []
-    for idx, test_id in enumerate(test_ids):
-        row = {
-            "id": test_id,
-            "ground_truth": gt_labels[idx],
-            "prediction": pred_labels[idx],
-            "score": float(pred_scores[idx])
-        }
-        for e_idx, emotion_id in enumerate(model_ids):
-            row[f"score_emotion_{emotion_id}"] = float(scoremat[e_idx, idx])
-        rows.append(row)
-
-    scores_csv = results_dir / "plda_scores.csv"
-    pd.DataFrame(rows).to_csv(scores_csv, index=False)
-
     # Metrics
     valid_indices = [i for i, gt in enumerate(gt_labels) if gt is not None]
     if valid_indices:
@@ -249,6 +234,28 @@ def score_speaker_plda(
         accuracy = f1_macro = f1_micro = f1_weighted = None
         report = {}
         conf_mat = None
+
+    accuracy_percent = None if accuracy is None else float(accuracy * 100.0)
+
+    rows = []
+    for idx, test_id in enumerate(test_ids):
+        gt_label = gt_labels[idx]
+        for e_idx, emotion_id in enumerate(model_ids):
+            if gt_label is None:
+                gt_value = None
+            else:
+                gt_value = 1 if int(emotion_id) == int(gt_label) else 0
+            emotion_name = EMOTION_LABELS.get(int(emotion_id), str(emotion_id))
+            rows.append({
+                "id": test_id,
+                "emotion": emotion_name,
+                "score": float(scoremat[e_idx, idx]),
+                "ground_truth": gt_value,
+                "accuracy_percent": accuracy_percent
+            })
+
+    scores_csv = results_dir / "plda_scores.csv"
+    pd.DataFrame(rows).to_csv(scores_csv, index=False)
 
     metrics = {
         "speaker": speaker_id,
@@ -311,7 +318,6 @@ def _plot_metrics(results_dir, confusion_matrix, report):
             ax.set_title("F1 Score per Emotion")
             ax.set_ylabel("F1")
             ax.set_ylim(0, 1)
-            ax.tick_params(axis="x", rotation=35)
             fig.tight_layout()
             fig.savefig(results_dir / "f1_per_class.png", dpi=150)
             plt.close(fig)

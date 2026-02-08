@@ -43,7 +43,7 @@ def _whiten_embeddings(embeddings, eps=1e-6):
 class PLDAModel:
     """Deprecated PLDA-style classifier wrapper (kept for backward compatibility)."""
     
-    def __init__(self, embedding_dim=256, use_lda=True, lda_dim=None, 
+    def __init__(self, embedding_dim=192, use_lda=True, lda_dim=None, 
                  classifier_type='logistic'):
         """
         Initialize PLDA-style model.
