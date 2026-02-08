@@ -440,6 +440,7 @@ Example: `03a01Fa.wav`
 **Feature Extraction for LDA:**
 
 For each MFCC file (time × features), LDA uses:
+
 - Mean across time
 - Standard deviation across time
 - Minimum across time
