@@ -74,6 +74,8 @@ usage() {
     echo "  test-noavg-speaker N - Build test CSV without averaging for a speaker"
     echo "  score-plda        - PLDA scoring for all speakers"
     echo "  score-plda-speaker N - PLDA scoring for a speaker"
+    echo "  score-plda-noavg        - PLDA scoring using test_noavg_embeddings.csv"
+    echo "  score-plda-noavg-speaker N - PLDA scoring (noavg) for a speaker"
     echo "  metadata         - Extract metadata only"
     echo "  segment          - Segment audio only"
     echo "  mfcc             - Extract MFCC features only"
@@ -106,6 +108,8 @@ usage() {
     echo "  ./run.sh test-noavg-speaker 03  # Build test CSV without averaging for speaker 03"
     echo "  ./run.sh score-plda    # PLDA scoring for all speakers"
     echo "  ./run.sh score-plda-speaker 03  # PLDA scoring for speaker 03"
+    echo "  ./run.sh score-plda-noavg    # PLDA scoring using noavg test CSV"
+    echo "  ./run.sh score-plda-noavg-speaker 03  # PLDA scoring noavg for speaker 03"
 }
 
 # Parse command
@@ -311,6 +315,29 @@ score_speaker_plda("$SPEAKER")
 print("PLDA scoring complete for speaker $SPEAKER")
 PY
         print_success "PLDA scoring complete for speaker $SPEAKER!"
+        ;;
+
+    score-plda-noavg)
+        print_header "PLDA Scoring (No Averaging) for All Speakers"
+        python - <<'PY'
+from utils.testing import score_all_speakers_plda
+
+score_all_speakers_plda(test_csv_name="test_noavg_embeddings.csv")
+print("PLDA scoring (noavg) complete")
+PY
+        print_success "PLDA scoring (noavg) complete!"
+        ;;
+
+    score-plda-noavg-speaker)
+        SPEAKER="${2:-03}"
+        print_header "PLDA Scoring (No Averaging) for Speaker $SPEAKER"
+        python - <<PY
+from utils.testing import score_speaker_plda
+
+score_speaker_plda("$SPEAKER", test_csv_name="test_noavg_embeddings.csv")
+print("PLDA scoring (noavg) complete for speaker $SPEAKER")
+PY
+        print_success "PLDA scoring (noavg) complete for speaker $SPEAKER!"
         ;;
     
     metadata)

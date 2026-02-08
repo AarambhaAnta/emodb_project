@@ -102,7 +102,8 @@ def score_speaker_plda(
     base_dir=None,
     model_path=None,
     results_dir=None,
-    testing_dir=None
+    testing_dir=None,
+    test_csv_name="test_averaged_embeddings.csv"
 ):
     config = get_config()
     base_dir = Path(base_dir or config.get("BASE_DIR", Path(__file__).resolve().parents[2]))
@@ -134,7 +135,7 @@ def score_speaker_plda(
     length_norm = model_payload.get("length_norm", True)
 
     speaker_test_dir = testing_dir / f"speaker_{speaker_id}"
-    test_csv = speaker_test_dir / "test_averaged_embeddings.csv"
+    test_csv = speaker_test_dir / test_csv_name
     if not test_csv.exists():
         raise FileNotFoundError(f"Test averaged CSV not found: {test_csv}")
 
@@ -332,7 +333,7 @@ def _plot_metrics(results_dir, confusion_matrix, report):
             plt.close(fig)
 
 
-def score_all_speakers_plda(base_dir=None, model_root=None, results_dir=None, testing_dir=None):
+def score_all_speakers_plda(base_dir=None, model_root=None, results_dir=None, testing_dir=None, test_csv_name="test_averaged_embeddings.csv"):
     config = get_config()
     base_dir = Path(base_dir or config.get("BASE_DIR", Path(__file__).resolve().parents[2]))
     paths = config.get("PATHS", {})
@@ -362,6 +363,7 @@ def score_all_speakers_plda(base_dir=None, model_root=None, results_dir=None, te
                 model_path=model_path,
                 results_dir=results_root,
                 testing_dir=testing_dir,
+                test_csv_name=test_csv_name,
             )
         except Exception as exc:
             results[speaker_id] = {"error": str(exc)}
