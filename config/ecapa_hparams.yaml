@@ -1,11 +1,11 @@
 # %YAML 1.2
 
 # Seed for reproducibility
-seed: 1234
+seed: 1986
 __set_seed: !apply:torch.manual_seed [!ref <seed>]
 
 # Data parameters
-batch_size: 16
+batch_size: 32
 num_workers: 0  # Set to 0 for Python 3.13 compatibility
 
 # Feature parameters
@@ -17,7 +17,7 @@ embedding_dim: 192
 num_classes: 7
 
 # Training parameters
-number_of_epochs: 2
+number_of_epochs: 10
 lr: 0.001
 weight_decay: 0.0001
 
