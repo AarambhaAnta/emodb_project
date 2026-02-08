@@ -7,12 +7,12 @@ from .ecapa_trainer import (
     train_all_speakers
 )
 
-from .lda_trainer import (
-    LDAModel,
-    load_features_from_csv,
-    train_speaker_lda,
-    train_all_speakers_lda
-)
+# from .lda_trainer import (
+#     LDAModel,
+#     load_features_from_csv,
+#     train_speaker_lda,
+#     train_all_speakers_lda
+# )
 
 from .plda_trainer import (
     PLDAModel,
@@ -27,10 +27,10 @@ __all__ = [
     'train_speaker_model',
     'train_all_speakers',
     # LDA
-    'LDAModel',
-    'load_features_from_csv',
-    'train_speaker_lda',
-    'train_all_speakers_lda',
+    # 'LDAModel',
+    # 'load_features_from_csv',
+    # 'train_speaker_lda',
+    # 'train_all_speakers_lda',
     # PLDA
     'PLDAModel',
     'train_speaker_plda',
