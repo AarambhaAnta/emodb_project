@@ -19,6 +19,7 @@ This project implements a comprehensive emotion recognition system that:
 🔧 **Config-Based**: All parameters centralized in YAML  
 📦 **Pip Installable**: `pip install -e .` for easy setup  
 🎯 **LOSO Validation**: Speaker-independent evaluation  
+🤖 **Multiple Models**: ECAPA-TDNN and LDA support  
 📊 **Comprehensive Logging**: Track all pipeline stages  
 🚀 **Multiple Entry Points**: CLI, Python API, and shell scripts  
 
@@ -56,14 +57,32 @@ python main.py --all
 ./run.sh train       # train models
 ```
 
-### 3. Train Specific Speaker
+### 3. Train Models
+
+**ECAPA-TDNN (Deep Learning):**
 
 ```bash
-# Using run.sh (recommended)
+# Train all speakers
+./run.sh train
+
+# Train specific speaker
 ./run.sh train-speaker 03
 
-# Using Python
+# Using Python directly
 python train_ecapa_models.py --speaker 03
+```
+
+**LDA (Statistical Model):**
+
+```bash
+# Train all speakers
+./run.sh train-lda
+
+# Train specific speaker
+./run.sh train-lda-speaker 03
+
+# Using Python directly
+python train_lda_models.py --speaker 03
 ```
 
 ## Project Structure
@@ -71,7 +90,8 @@ python train_ecapa_models.py --speaker 03
 ```bash
 emodb_project/
 ├── main.py                    # Main pipeline orchestrator
-├── train_ecapa_models.py      # Training script
+├── train_ecapa_models.py      # ECAPA-TDNN training script
+├── train_lda_models.py       # LDA training script
 ├── run.sh                     # Convenience shell script
 ├── verify_installation.py     # Installation verification
 ├── pyproject.toml            # Package configuration
@@ -80,7 +100,8 @@ emodb_project/
 │
 ├── config/
 │   ├── emodb_config.yaml     # Main configuration
-│   └── ecapa_hparams.yaml    # ECAPA-TDNN hyperparameters
+│   ├── ecapa_hparams.yaml    # ECAPA-TDNN hyperparameters
+│   └── lda_hparams.yaml     # LDA hyperparameters
 │
 ├── utils/                     # Core utilities package
 │   ├── __init__.py
@@ -93,7 +114,8 @@ emodb_project/
 │   │   ├── create_loso_splits.py
 │   │   └── create_train_val_splits.py
 │   └── training/             # Training modules
-│       └── ecapa_trainer.py
+│       ├── ecapa_trainer.py
+│       └── lda_trainer.py
 │
 ├── data/
 │   ├── raw/emodb/            # Raw audio files (.wav)
@@ -113,9 +135,12 @@ emodb_project/
 ├── output/
 │   ├── logs/                 # Pipeline logs
 │   ├── models/              # Trained models
-│   │   ├── speaker_XX/      # Model checkpoints per speaker
-│   │   ├── training_results.json  # All speakers results
-│   │   └── training_results_speaker_XX.json  # Single speaker results
+│   │   ├── speaker_XX/      # ECAPA-TDNN checkpoints per speaker
+│   │   ├── lda/            # LDA models
+│   │   │   └── speaker_XX/  # LDA per speaker
+│   │   ├── training_results.json  # All speakers ECAPA results
+│   │   ├── training_results_speaker_XX.json  # Single speaker ECAPA results
+│   │   └── lda_training_results.json  # LDA results
 │   └── results/             # Evaluation results
 │
 ├── scripts/
@@ -160,6 +185,16 @@ Extracts 40 MFCC coefficients with configurable parameters:
 ./run.sh mfcc
 ```
 
+Alternative (if MFCCs already extracted in MATLAB):
+
+```bash
+# Build emodb_mfcc_features.csv from existing .npy files
+./run.sh create-mfcc-csv
+```
+
+This assumes your MFCC .npy files are in the configured path
+(`MFCC.OUTPUT_DIR`, default `data/processed/features/mfcc`).
+
 ### Stage 4: LOSO Split Creation
 
 Creates Leave-One-Speaker-Out splits for cross-validation.
@@ -178,7 +213,9 @@ Creates stratified 80/20 splits within each speaker's training data.
 
 ### Stage 6: Model Training
 
-Trains ECAPA-TDNN models for emotion recognition.
+Train emotion recognition models using different approaches:
+
+**ECAPA-TDNN (Deep Learning):**
 
 ```bash
 # Train all speakers
@@ -186,6 +223,16 @@ Trains ECAPA-TDNN models for emotion recognition.
 
 # Train specific speaker
 ./run.sh train-speaker 03
+```
+
+**LDA (Statistical Model):**
+
+```bash
+# Train all speakers
+./run.sh train-lda
+
+# Train specific speaker
+./run.sh train-lda-speaker 03
 ```
 
 ## Usage Examples
@@ -214,15 +261,33 @@ python main.py --mfcc
 
 ### Training Workflows
 
+**ECAPA-TDNN:**
+
 ```bash
 # Train all speakers
-python train_ecapa_models.py
+python train_ecapa_models.py --all
 
 # Train specific speaker
 python train_ecapa_models.py --speaker 03
 
 # With custom paths
-python train_ecapa_models.py --loso_dir path/to/loso --output_dir path/to/output
+python train_ecapa_models.py --speaker 03 --loso_dir path/to/loso --output_dir path/to/output
+```
+
+**LDA:**
+
+```bash
+# Train all speakers
+python train_lda_models.py --all
+
+# Train specific speaker
+python train_lda_models.py --speaker 03
+
+# With custom parameters
+python train_lda_models.py --speaker 03 --n-components 5 --solver eigen --shrinkage auto
+
+# Different feature column
+python train_lda_models.py --speaker 03 --feature-column mfcc
 ```
 
 ### Using Python API
@@ -318,7 +383,7 @@ Example: `03a01Fa.wav`
 
 ## Model Architecture
 
-### ECAPA-TDNN
+### ECAPA-TDNN (Deep Learning)
 
 - **Input**: 40-dimensional MFCC features
 - **Architecture**: Time Delay Neural Network with channel attention
@@ -327,33 +392,55 @@ Example: `03a01Fa.wav`
 - **Optimizer**: Adam
 - **Loss**: NLL (Negative Log-Likelihood)
 
-### Hyperparameters
-
-Configured in [config/ecapa_hparams.yaml](config/ecapa_hparams.yaml):
+**Hyperparameters** (in [config/ecapa_hparams.yaml](config/ecapa_hparams.yaml)):
 
 - Input size: 40
 - Embedding size: 192
-- Number of epochs: 10 (adjust as needed)
+- Number of epochs: 2 (adjust as needed)
 - Batch size: 8
-- Learning rate: Configured in hparams file
+- Learning rate: 0.001
+
+### LDA (Statistical Model)
+
+- **Input**: Statistical features from MFCC (mean, std, min, max)
+- **Algorithm**: Probabilistic Linear Discriminant Analysis
+- **Output**: 7-class emotion classification
+- **Framework**: scikit-learn
+- **Preprocessing**: Feature standardization (automatic)
+- **Advantages**: Fast training, no GPU needed, interpretable
+
+**Hyperparameters** (in [config/lda_hparams.yaml](config/lda_hparams.yaml)):
+
+- n_components: None (defaults to min(n_classes-1, n_features))
+- solver: 'svd' (also supports 'lsqr', 'eigen')
+- shrinkage: None (regularization for 'lsqr'/'eigen' solvers)
+- feature_column: 'mfcc'
+
+**Feature Extraction for LDA:**
+
+For each MFCC file (time × features), LDA uses:
+- Mean across time
+- Standard deviation across time
+- Minimum across time
+- Maximum across time
+
+This reduces variable-length sequences to fixed-size feature vectors.
 
 ## Results
 
 Training results are saved to JSON files:
 
-**Single speaker training:**
+**ECAPA-TDNN Results:**
 
 ```bash
+# Single speaker
 output/models/training_results_speaker_03.json
-```
 
-**All speakers training:**
-
-```bash
+# All speakers
 output/models/training_results.json
 ```
 
-Example format:
+Example ECAPA-TDNN format:
 
 ```json
 {
@@ -362,6 +449,33 @@ Example format:
     "best_error": 0.1234,
     "model_path": "output/models/speaker_03"
   }
+}
+```
+
+**LDA Results:**
+
+```bash
+# Single speaker
+output/models/lda/speaker_03/lda_results.json
+
+# All speakers
+output/models/lda/lda_training_results.json
+```
+
+Example LDA format:
+
+```json
+{
+  "speaker": "03",
+  "model_path": "output/models/lda/speaker_03/lda_model.pkl",
+  "train_accuracy": 0.9876,
+  "train_error": 0.0124,
+  "val_accuracy": 0.8543,
+  "val_error": 0.1457,
+  "n_train_samples": 450,
+  "n_val_samples": 112,
+  "n_components": 6,
+  "feature_dim": 160
 }
 ```
 
