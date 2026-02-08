@@ -151,10 +151,12 @@ def score_speaker_plda(
         test_embeddings.append(emb)
     test_embeddings = np.vstack(test_embeddings)
 
+    test_embeddings_norm = test_embeddings
     if length_norm:
-        test_embeddings = _length_normalize(test_embeddings)
+        test_embeddings_norm = _length_normalize(test_embeddings_norm)
+    test_embeddings_plda = test_embeddings_norm
     if whiten_mean is not None and whiten_mat is not None:
-        test_embeddings = _apply_whitening(test_embeddings, whiten_mean, whiten_mat)
+        test_embeddings_plda = _apply_whitening(test_embeddings_plda, whiten_mean, whiten_mat)
 
     # Load emotion centroids for enrollment
     centroids = []
@@ -174,13 +176,15 @@ def score_speaker_plda(
         raise ValueError(f"No centroids found for speaker {speaker_id}")
 
     centroids = np.vstack(centroids)
+    centroids_norm = centroids
     if length_norm:
-        centroids = _length_normalize(centroids)
+        centroids_norm = _length_normalize(centroids_norm)
+    centroids_plda = centroids_norm
     if whiten_mean is not None and whiten_mat is not None:
-        centroids = _apply_whitening(centroids, whiten_mean, whiten_mat)
+        centroids_plda = _apply_whitening(centroids_plda, whiten_mean, whiten_mat)
 
-    enroll_stat = _build_stat_object(centroids, centroid_ids)
-    test_stat = _build_stat_object(test_embeddings, test_ids)
+    enroll_stat = _build_stat_object(centroids_plda, centroid_ids)
+    test_stat = _build_stat_object(test_embeddings_plda, test_ids)
 
     model_ids = np.array([str(e) for e in centroid_ids], dtype="|O")
     seg_ids = np.array([str(t) for t in test_ids], dtype="|O")
@@ -201,6 +205,7 @@ def score_speaker_plda(
     )
 
     scoremat = scores.scoremat
+    cosine_mat = centroids_norm @ test_embeddings_norm.T
     pred_idx = np.argmax(scoremat, axis=0)
     pred_labels = [int(model_ids[i]) for i in pred_idx]
     pred_scores = scoremat[pred_idx, np.arange(scoremat.shape[1])]
@@ -235,11 +240,13 @@ def score_speaker_plda(
         report = {}
         conf_mat = None
 
-    accuracy_percent = None if accuracy is None else float(accuracy * 100.0)
-
     rows = []
     for idx, test_id in enumerate(test_ids):
         gt_label = gt_labels[idx]
+        scores_vec = scoremat[:, idx]
+        scores_max = np.max(scores_vec)
+        exp_scores = np.exp(scores_vec - scores_max)
+        prob_vec = exp_scores / np.sum(exp_scores)
         for e_idx, emotion_id in enumerate(model_ids):
             if gt_label is None:
                 gt_value = None
@@ -250,8 +257,10 @@ def score_speaker_plda(
                 "id": test_id,
                 "emotion": emotion_name,
                 "score": float(scoremat[e_idx, idx]),
+                "cosine_similarity": float(cosine_mat[e_idx, idx]),
                 "ground_truth": gt_value,
-                "accuracy_percent": accuracy_percent
+                "probability": float(f"{prob_vec[e_idx]:.5f}"),
+                "probability_percent": float(f"{prob_vec[e_idx] * 100.0:.5f}")
             })
 
     scores_csv = results_dir / "plda_scores.csv"
@@ -333,6 +342,11 @@ def score_all_speakers_plda(base_dir=None, model_root=None, results_dir=None, te
     else:
         testing_dir = Path(testing_dir)
 
+    if results_dir is None:
+        results_root = base_dir / paths.get("RESULTS", "output/results")
+    else:
+        results_root = Path(results_dir)
+
     speaker_dirs = sorted([d.name for d in testing_dir.iterdir() if d.is_dir() and d.name.startswith("speaker_")])
     results = {}
 
@@ -346,10 +360,35 @@ def score_all_speakers_plda(base_dir=None, model_root=None, results_dir=None, te
                 speaker_id=speaker_id,
                 base_dir=base_dir,
                 model_path=model_path,
-                results_dir=results_dir,
+                results_dir=results_root,
                 testing_dir=testing_dir,
             )
         except Exception as exc:
             results[speaker_id] = {"error": str(exc)}
+
+    summary_rows = []
+    for speaker_id, result in results.items():
+        if isinstance(result, dict) and "error" in result:
+            summary_rows.append({
+                "speaker": speaker_id,
+                "accuracy": None,
+                "f1_macro": None,
+                "f1_micro": None,
+                "f1_weighted": None,
+                "error": result["error"]
+            })
+        else:
+            summary_rows.append({
+                "speaker": speaker_id,
+                "accuracy": result.get("accuracy"),
+                "f1_macro": result.get("f1_macro"),
+                "f1_micro": result.get("f1_micro"),
+                "f1_weighted": result.get("f1_weighted"),
+                "error": None
+            })
+
+    results_root.mkdir(parents=True, exist_ok=True)
+    summary_csv = results_root / "plda_summary.csv"
+    pd.DataFrame(summary_rows).to_csv(summary_csv, index=False)
 
     return results

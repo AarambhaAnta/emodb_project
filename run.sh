@@ -54,6 +54,8 @@ usage() {
     echo "  prepare          - Prepare data (LOSO + train/val splits)"
     echo "  train            - Train all ECAPA-TDNN models"
     echo "  train-speaker N  - Train ECAPA-TDNN for specific speaker (e.g., train-speaker 03)"
+    echo "  train-other       - Train ECAPA-TDNN on other.csv for all speakers"
+    echo "  train-other-speaker N - Train ECAPA-TDNN on other.csv for a speaker"
     echo "  train-lda        - Train all LDA models"
     echo "  train-lda-speaker N - Train LDA for specific speaker (e.g., train-lda-speaker 03)"
     echo "  train-plda       - Train all PLDA models"
@@ -87,6 +89,8 @@ usage() {
     echo "  ./run.sh extract-embeddings-speaker 03  # Extract embeddings for speaker 03"
     echo "  ./run.sh train-plda-speaker 03  # Train PLDA for speaker 03"
     echo "  ./run.sh train-plda-dev        # Train PLDA on dev embeddings"
+        echo "  ./run.sh train-other        # Train ECAPA on other.csv for all speakers"
+        echo "  ./run.sh train-other-speaker 03  # Train ECAPA on other.csv for speaker 03"
     echo "  ./run.sh train-plda-dev-speaker 03  # Train PLDA on dev embeddings for speaker 03"
     echo "  ./run.sh avg-embeddings    # Average train embeddings per emotion"
     echo "  ./run.sh avg-embeddings-speaker 03  # Average train embeddings for speaker 03"
@@ -129,6 +133,19 @@ case "$COMMAND" in
         print_header "Training ECAPA-TDNN for Speaker $SPEAKER"
         python main.py --train --speaker "$SPEAKER"
         print_success "ECAPA-TDNN training complete for speaker $SPEAKER!"
+        ;;
+
+    train-other)
+        print_header "Training ECAPA-TDNN on other.csv for All Speakers"
+        python train_ecapa_models.py --train-other --no-valid
+        print_success "ECAPA-TDNN other.csv training complete!"
+        ;;
+
+    train-other-speaker)
+        SPEAKER="${2:-03}"
+        print_header "Training ECAPA-TDNN on other.csv for Speaker $SPEAKER"
+        python train_ecapa_models.py --train-other --no-valid --speaker "$SPEAKER"
+        print_success "ECAPA-TDNN other.csv training complete for speaker $SPEAKER!"
         ;;
     
     train-lda)

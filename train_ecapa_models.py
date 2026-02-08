@@ -23,7 +23,7 @@ from pathlib import Path
 from hyperpyyaml import load_hyperpyyaml
 
 from utils import get_config
-from utils.training import train_all_speakers, train_speaker_model
+from utils.training import train_all_speakers, train_speaker_model, train_all_speakers_other, train_speaker_model_other
 
 
 def parse_args():
@@ -66,6 +66,18 @@ def parse_args():
         default=None,
         help='Train only specific speaker (e.g., "03"). If not provided, train all.'
     )
+
+    parser.add_argument(
+        '--train-other',
+        action='store_true',
+        help='Train using other.csv (all remaining speakers)'
+    )
+
+    parser.add_argument(
+        '--no-valid',
+        action='store_true',
+        help='Skip validation when training on other.csv'
+    )
     
     parser.add_argument(
         '--device',
@@ -87,7 +99,10 @@ def main():
     # Get paths from config or arguments
     base_dir = Path(config['BASE_DIR'])
     loso_dir = args.loso_dir or str(base_dir / config['PATHS']['LOSO'])
-    output_dir = args.output_dir or str(base_dir / config['PATHS']['MODELS'])
+    if args.train_other and args.output_dir is None:
+        output_dir = str(base_dir / 'output' / 'models_other')
+    else:
+        output_dir = args.output_dir or str(base_dir / config['PATHS']['MODELS'])
     hparams_file = args.hparams or str(base_dir / 'config' / 'ecapa_hparams.yaml')
     
     # Load hyperparameters
@@ -112,18 +127,31 @@ def main():
     if args.speaker:
         # Train single speaker
         print(f"Training single speaker: {args.speaker}")
-        
-        best_error = train_speaker_model(
-            speaker_id=args.speaker,
-            loso_dir=loso_dir,
-            output_dir=output_dir,
-            hparams=hparams,
-            run_opts=run_opts
-        )
+
+        if args.train_other:
+            best_error = train_speaker_model_other(
+                speaker_id=args.speaker,
+                loso_dir=loso_dir,
+                output_dir=output_dir,
+                hparams=hparams,
+                run_opts=run_opts,
+                use_validation=not args.no_valid,
+            )
+        else:
+            best_error = train_speaker_model(
+                speaker_id=args.speaker,
+                loso_dir=loso_dir,
+                output_dir=output_dir,
+                hparams=hparams,
+                run_opts=run_opts
+            )
         
         print(f"\n{separator}")
         print(f"Training complete for speaker {args.speaker}")
-        print(f"Best validation error: {best_error:.4f}")
+        if best_error is not None:
+            print(f"Best validation error: {best_error:.4f}")
+        else:
+            print("Validation skipped")
         print(f"{separator}\n")
         
         # Save single speaker results to JSON
@@ -145,12 +173,21 @@ def main():
         # Train all speakers
         print("Training all speakers...")
         
-        results = train_all_speakers(
-            loso_dir=loso_dir,
-            output_dir=output_dir,
-            hparams_file=hparams,
-            run_opts=run_opts
-        )
+        if args.train_other:
+            results = train_all_speakers_other(
+                loso_dir=loso_dir,
+                output_dir=output_dir,
+                hparams_file=hparams,
+                run_opts=run_opts,
+                use_validation=not args.no_valid,
+            )
+        else:
+            results = train_all_speakers(
+                loso_dir=loso_dir,
+                output_dir=output_dir,
+                hparams_file=hparams,
+                run_opts=run_opts
+            )
         
         # Save results
         results_file = os.path.join(output_dir, 'training_results.json')
@@ -169,8 +206,12 @@ def main():
         print(f"Failed: {len(failed)}/{len(results)}")
         
         if successful:
-            avg_error = sum(results[s]['best_error'] for s in successful) / len(successful)
-            print(f"\nAverage validation error: {avg_error:.4f}")
+            best_errors = [results[s]['best_error'] for s in successful if results[s]['best_error'] is not None]
+            if best_errors:
+                avg_error = sum(best_errors) / len(best_errors)
+                print(f"\nAverage validation error: {avg_error:.4f}")
+            else:
+                print("\nValidation skipped for all speakers")
             
             print("\nPer-speaker results:")
             for speaker in sorted(successful):
