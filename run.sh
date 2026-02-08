@@ -62,6 +62,10 @@ usage() {
     echo "  train-plda-dev-speaker N - Train PLDA on dev embeddings for specific speaker"
     echo "  extract-embeddings - Extract embeddings for all speakers"
     echo "  extract-embeddings-speaker N - Extract embeddings for specific speaker"
+    echo "  avg-embeddings     - Average train embeddings per emotion for all speakers"
+    echo "  avg-embeddings-speaker N - Average train embeddings for a speaker"
+    echo "  avg-test-embeddings     - Average test embeddings by base id for all speakers"
+    echo "  avg-test-embeddings-speaker N - Average test embeddings by base id for a speaker"
     echo "  metadata         - Extract metadata only"
     echo "  segment          - Segment audio only"
     echo "  mfcc             - Extract MFCC features only"
@@ -82,6 +86,10 @@ usage() {
     echo "  ./run.sh train-plda-speaker 03  # Train PLDA for speaker 03"
     echo "  ./run.sh train-plda-dev        # Train PLDA on dev embeddings"
     echo "  ./run.sh train-plda-dev-speaker 03  # Train PLDA on dev embeddings for speaker 03"
+    echo "  ./run.sh avg-embeddings    # Average train embeddings per emotion"
+    echo "  ./run.sh avg-embeddings-speaker 03  # Average train embeddings for speaker 03"
+    echo "  ./run.sh avg-test-embeddings    # Average test embeddings by base id"
+    echo "  ./run.sh avg-test-embeddings-speaker 03  # Average test embeddings for speaker 03"
 }
 
 # Parse command
@@ -169,6 +177,52 @@ case "$COMMAND" in
         print_header "Training PLDA for Speaker $SPEAKER (Dev Embeddings)"
         python train_plda_models.py --speaker "$SPEAKER" --embeddings-dir data/embeddings
         print_success "PLDA training complete for speaker $SPEAKER (dev embeddings)!"
+        ;;
+
+    avg-embeddings)
+        print_header "Averaging Train Embeddings per Emotion"
+        python - <<'PY'
+from utils.testing import average_emotion_embeddings_for_all
+
+average_emotion_embeddings_for_all()
+print("Averaging complete")
+PY
+        print_success "Emotion-wise averaging complete!"
+        ;;
+
+    avg-embeddings-speaker)
+        SPEAKER="${2:-03}"
+        print_header "Averaging Train Embeddings per Emotion for Speaker $SPEAKER"
+        python - <<PY
+from utils.testing import average_emotion_embeddings_for_speaker
+
+average_emotion_embeddings_for_speaker("$SPEAKER")
+print("Averaging complete for speaker $SPEAKER")
+PY
+        print_success "Emotion-wise averaging complete for speaker $SPEAKER!"
+        ;;
+
+    avg-test-embeddings)
+        print_header "Averaging Test Embeddings by Base Id"
+        python - <<'PY'
+from utils.testing import average_test_embeddings_for_all
+
+average_test_embeddings_for_all()
+print("Test embedding averaging complete")
+PY
+        print_success "Test embedding averaging complete!"
+        ;;
+
+    avg-test-embeddings-speaker)
+        SPEAKER="${2:-03}"
+        print_header "Averaging Test Embeddings by Base Id for Speaker $SPEAKER"
+        python - <<PY
+from utils.testing import average_test_embeddings_for_speaker
+
+average_test_embeddings_for_speaker("$SPEAKER")
+print("Test embedding averaging complete for speaker $SPEAKER")
+PY
+        print_success "Test embedding averaging complete for speaker $SPEAKER!"
         ;;
     
     metadata)

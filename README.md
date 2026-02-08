@@ -259,6 +259,27 @@ python main.py --segment
 python main.py --mfcc
 ```
 
+### Embedding Averaging (Testing Prep)
+
+Average train embeddings per emotion (7 centroids) and save to
+`data/testing/speaker_{id}/train` with a summary CSV at
+`data/testing/speaker_{id}/emotion_centroids.csv`.
+
+```bash
+./run.sh avg-embeddings
+./run.sh avg-embeddings-speaker 03
+```
+
+Average test embeddings by base id (e.g., `abc_1.npy`, `abc_2.npy` → `abc.npy`)
+and save to `data/testing/speaker_{id}/test`. The summary CSV is stored at
+`data/testing/speaker_{id}/test_averaged_embeddings.csv` with columns:
+`id`, `embedding_path`, `emotion_path`, `ground_truth` (one-hot per emotion).
+
+```bash
+./run.sh avg-test-embeddings
+./run.sh avg-test-embeddings-speaker 03
+```
+
 ### Training Workflows
 
 **ECAPA-TDNN:**

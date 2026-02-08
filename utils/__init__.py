@@ -18,12 +18,14 @@ from .extract_config import get_config
 from . import audio_processing
 from . import features_extraction  
 from . import training
+from . import testing
 
 __all__ = [
     'get_config',
     'audio_processing',
     'features_extraction',
-    'training'
+    'training',
+    'testing'
 ]
 
 __version__ = '0.1.0'
