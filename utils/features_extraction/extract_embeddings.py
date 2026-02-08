@@ -55,23 +55,34 @@ def load_ecapa_model(model_dir, hparams_file=None):
     embedding_model = hparams['embedding_model']
     mean_var_norm = hparams['mean_var_norm']
     
-    # Load checkpoint if available
-    checkpoint_files = list(Path(model_dir).glob('CKPT+*'))
-    if checkpoint_files:
-        checkpoint_path = sorted(checkpoint_files)[-1]
-        print(f"  Loading checkpoint: {checkpoint_path.name}")
-        
-        checkpoint = torch.load(checkpoint_path / 'model.ckpt', map_location='cpu')
-        
-        # Load embedding model weights
-        if 'embedding_model' in checkpoint:
-            embedding_model.load_state_dict(checkpoint['embedding_model'])
-        
-        # Load mean/var norm weights
-        if 'mean_var_norm' in checkpoint:
-            mean_var_norm.load_state_dict(checkpoint['mean_var_norm'])
+    # Load consolidated model if available
+    model_path = Path(model_dir) / 'model.pt'
+    if model_path.exists():
+        print(f"  Loading consolidated model: {model_path.name}")
+        payload = torch.load(model_path, map_location='cpu')
+        embedding_model.load_state_dict(payload['embedding_model'])
+        mean_var_norm.load_state_dict(payload['normalizer'])
     else:
-        print(f"  Warning: No checkpoint found, using initialized model")
+        # Fall back to SpeechBrain checkpoints
+        checkpoint_dirs = list(Path(model_dir).glob('CKPT+*'))
+        if checkpoint_dirs:
+            checkpoint_path = sorted(checkpoint_dirs)[-1]
+            print(f"  Loading checkpoint: {checkpoint_path.name}")
+            
+            emb_ckpt = checkpoint_path / 'embedding_model.ckpt'
+            norm_ckpt = checkpoint_path / 'normalizer.ckpt'
+            
+            if emb_ckpt.exists():
+                embedding_model.load_state_dict(torch.load(emb_ckpt, map_location='cpu'))
+            else:
+                raise FileNotFoundError(f"Missing embedding_model.ckpt in {checkpoint_path}")
+            
+            if norm_ckpt.exists():
+                mean_var_norm.load_state_dict(torch.load(norm_ckpt, map_location='cpu'))
+            else:
+                raise FileNotFoundError(f"Missing normalizer.ckpt in {checkpoint_path}")
+        else:
+            print("  Warning: No model.pt or checkpoint found, using initialized model")
     
     embedding_model.eval()
     
