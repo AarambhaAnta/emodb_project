@@ -1,0 +1,36 @@
+# PLDA Training Hyperparameters
+
+# SpeechBrain PLDA settings
+use_lda: true  # Apply LDA before PLDA for dimensionality reduction
+lda_dim: null  # LDA output dimension (null = n_classes - 1 = 6 for 7 emotions)
+plda_dim: null  # PLDA dimension (null = same as LDA output)
+
+# Input settings
+embedding_dim: 192  # ECAPA-TDNN embedding dimension
+embeddings_source: 'ecapa'  # Source of embeddings: 'ecapa' or 'precomputed'
+
+# Paths (relative to BASE_DIR from emodb_config.yaml)
+loso_dir: 'data/processed/loso'
+output_dir: 'output/models/plda'
+embeddings_dir: 'data/embeddings'  # Directory for pre-extracted embeddings
+
+# ECAPA model settings (for embedding extraction)
+ecapa_model_dir: 'output/models'  # Directory containing trained ECAPA-TDNN models
+ecapa_hparams: 'config/ecapa_hparams.yaml'
+
+# Emotion label mapping (same as emodb_config.yaml)
+emotion_labels:
+  0: 'Happiness'  # F - Freude
+  1: 'Neutral'    # N - Neutral
+  2: 'Anger'      # W - Wut
+  3: 'Fear'       # A - Angst
+  4: 'Boredom'    # L - Langeweile
+  5: 'Disgust'    # E - Ekel
+  6: 'Sadness'    # T - Trauer
+
+# Training notes:
+# - PLDA requires embeddings as input (not raw features)
+# - Extract embeddings from trained ECAPA-TDNN models first
+# - LDA dimensionality reduction is recommended before PLDA
+# - Typical flow: MFCC → ECAPA embeddings → LDA → PLDA
+# - PLDA is especially useful for speaker-independent emotion recognition

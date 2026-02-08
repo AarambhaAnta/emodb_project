@@ -58,6 +58,8 @@ usage() {
     echo "  train-lda-speaker N - Train LDA for specific speaker (e.g., train-lda-speaker 03)"
     echo "  train-plda       - Train all PLDA models"
     echo "  train-plda-speaker N - Train PLDA for specific speaker (e.g., train-plda-speaker 03)"
+    echo "  train-plda-dev     - Train PLDA on dev embeddings for all speakers"
+    echo "  train-plda-dev-speaker N - Train PLDA on dev embeddings for specific speaker"
     echo "  extract-embeddings - Extract embeddings for all speakers"
     echo "  extract-embeddings-speaker N - Extract embeddings for specific speaker"
     echo "  metadata         - Extract metadata only"
@@ -78,6 +80,8 @@ usage() {
     echo "  ./run.sh train-lda-speaker 03  # Train LDA for speaker 03"
     echo "  ./run.sh extract-embeddings-speaker 03  # Extract embeddings for speaker 03"
     echo "  ./run.sh train-plda-speaker 03  # Train PLDA for speaker 03"
+    echo "  ./run.sh train-plda-dev        # Train PLDA on dev embeddings"
+    echo "  ./run.sh train-plda-dev-speaker 03  # Train PLDA on dev embeddings for speaker 03"
 }
 
 # Parse command
@@ -152,6 +156,19 @@ case "$COMMAND" in
         print_header "Training PLDA for Speaker $SPEAKER"
         python train_plda_models.py --speaker "$SPEAKER"
         print_success "PLDA training complete for speaker $SPEAKER!"
+        ;;
+
+    train-plda-dev)
+        print_header "Training PLDA Models (Dev Embeddings)"
+        python train_plda_models.py --all --embeddings-dir data/embeddings
+        print_success "PLDA training complete (dev embeddings)!"
+        ;;
+
+    train-plda-dev-speaker)
+        SPEAKER="${2:-03}"
+        print_header "Training PLDA for Speaker $SPEAKER (Dev Embeddings)"
+        python train_plda_models.py --speaker "$SPEAKER" --embeddings-dir data/embeddings
+        print_success "PLDA training complete for speaker $SPEAKER (dev embeddings)!"
         ;;
     
     metadata)
