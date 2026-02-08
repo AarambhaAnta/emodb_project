@@ -66,6 +66,8 @@ usage() {
     echo "  avg-embeddings-speaker N - Average train embeddings for a speaker"
     echo "  avg-test-embeddings     - Average test embeddings by base id for all speakers"
     echo "  avg-test-embeddings-speaker N - Average test embeddings by base id for a speaker"
+    echo "  score-plda        - PLDA scoring for all speakers"
+    echo "  score-plda-speaker N - PLDA scoring for a speaker"
     echo "  metadata         - Extract metadata only"
     echo "  segment          - Segment audio only"
     echo "  mfcc             - Extract MFCC features only"
@@ -90,6 +92,8 @@ usage() {
     echo "  ./run.sh avg-embeddings-speaker 03  # Average train embeddings for speaker 03"
     echo "  ./run.sh avg-test-embeddings    # Average test embeddings by base id"
     echo "  ./run.sh avg-test-embeddings-speaker 03  # Average test embeddings for speaker 03"
+    echo "  ./run.sh score-plda    # PLDA scoring for all speakers"
+    echo "  ./run.sh score-plda-speaker 03  # PLDA scoring for speaker 03"
 }
 
 # Parse command
@@ -223,6 +227,29 @@ average_test_embeddings_for_speaker("$SPEAKER")
 print("Test embedding averaging complete for speaker $SPEAKER")
 PY
         print_success "Test embedding averaging complete for speaker $SPEAKER!"
+        ;;
+
+    score-plda)
+        print_header "PLDA Scoring for All Speakers"
+        python - <<'PY'
+from utils.testing import score_all_speakers_plda
+
+score_all_speakers_plda()
+print("PLDA scoring complete")
+PY
+        print_success "PLDA scoring complete!"
+        ;;
+
+    score-plda-speaker)
+        SPEAKER="${2:-03}"
+        print_header "PLDA Scoring for Speaker $SPEAKER"
+        python - <<PY
+from utils.testing import score_speaker_plda
+
+score_speaker_plda("$SPEAKER")
+print("PLDA scoring complete for speaker $SPEAKER")
+PY
+        print_success "PLDA scoring complete for speaker $SPEAKER!"
         ;;
     
     metadata)
