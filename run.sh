@@ -56,10 +56,16 @@ usage() {
     echo "  train-speaker N  - Train ECAPA-TDNN for specific speaker (e.g., train-speaker 03)"
     echo "  train-other       - Train ECAPA-TDNN on other.csv for all speakers"
     echo "  train-other-speaker N - Train ECAPA-TDNN on other.csv for a speaker"
+    echo "  train-first       - Train ECAPA-TDNN on first segment for all speakers"
+    echo "  train-first-speaker N - Train ECAPA-TDNN on first segment for a speaker"
+    echo "  train-other-first       - Train ECAPA-TDNN on first segment from other.csv (all)"
+    echo "  train-other-first-speaker N - Train ECAPA-TDNN on first segment from other.csv (speaker)"
     echo "  train-lda        - Train all LDA models"
     echo "  train-lda-speaker N - Train LDA for specific speaker (e.g., train-lda-speaker 03)"
     echo "  train-plda       - Train all PLDA models"
     echo "  train-plda-speaker N - Train PLDA for specific speaker (e.g., train-plda-speaker 03)"
+    echo "  train-plda-first       - Train PLDA on first segment for all speakers"
+    echo "  train-plda-first-speaker N - Train PLDA on first segment for a speaker"
     echo "  train-plda-dev     - Train PLDA on dev embeddings for all speakers"
     echo "  train-plda-dev-speaker N - Train PLDA on dev embeddings for specific speaker"
     echo "  train-plda-other     - Train PLDA on other embeddings for all speakers"
@@ -76,6 +82,8 @@ usage() {
     echo "  test-noavg-speaker N - Build test CSV without averaging for a speaker"
     echo "  test-first        - Build test CSV using first segment per base id"
     echo "  test-first-speaker N - Build test CSV using first segment per base id for a speaker"
+    echo "  test-emotions-first       - Test centroid classifier on first segment for all speakers"
+    echo "  test-emotions-first-speaker N - Test centroid classifier on first segment for a speaker"
     echo "  score-plda        - PLDA scoring for all speakers"
     echo "  score-plda-speaker N - PLDA scoring for a speaker"
     echo "  score-plda-noavg        - PLDA scoring using test_noavg_embeddings.csv"
@@ -101,9 +109,14 @@ usage() {
     echo "  ./run.sh train-plda-dev        # Train PLDA on dev embeddings"
     echo "  ./run.sh train-other        # Train ECAPA on other.csv for all speakers"
     echo "  ./run.sh train-other-speaker 03  # Train ECAPA on other.csv for speaker 03"
+    echo "  ./run.sh train-first        # Train ECAPA on first segment for all speakers"
+    echo "  ./run.sh train-first-speaker 03  # Train ECAPA on first segment for speaker 03"
+    echo "  ./run.sh train-other-first  # Train ECAPA on first segment from other.csv"
     echo "  ./run.sh train-plda-dev-speaker 03  # Train PLDA on dev embeddings for speaker 03"
     echo "  ./run.sh train-plda-other        # Train PLDA on other embeddings"
     echo "  ./run.sh train-plda-other-speaker 03  # Train PLDA on other embeddings for speaker 03"
+    echo "  ./run.sh train-plda-first        # Train PLDA on first segment for all speakers"
+    echo "  ./run.sh train-plda-first-speaker 03  # Train PLDA on first segment for speaker 03"
     echo "  ./run.sh avg-embeddings    # Average train embeddings per emotion"
     echo "  ./run.sh avg-embeddings-speaker 03  # Average train embeddings for speaker 03"
     echo "  ./run.sh avg-embeddings-other    # Average other embeddings per emotion"
@@ -114,6 +127,8 @@ usage() {
     echo "  ./run.sh test-noavg-speaker 03  # Build test CSV without averaging for speaker 03"
     echo "  ./run.sh test-first    # Build test CSV using first segment per base id"
     echo "  ./run.sh test-first-speaker 03  # Build test CSV using first segment per base id for speaker 03"
+    echo "  ./run.sh test-emotions-first    # Test centroid classifier on first segment"
+    echo "  ./run.sh test-emotions-first-speaker 03  # Test centroid classifier on first segment for speaker 03"
     echo "  ./run.sh score-plda    # PLDA scoring for all speakers"
     echo "  ./run.sh score-plda-speaker 03  # PLDA scoring for speaker 03"
     echo "  ./run.sh score-plda-noavg    # PLDA scoring using noavg test CSV"
@@ -167,6 +182,32 @@ case "$COMMAND" in
         python train_ecapa_models.py --train-other --no-valid --speaker "$SPEAKER"
         print_success "ECAPA-TDNN other.csv training complete for speaker $SPEAKER!"
         ;;
+
+    train-first)
+        print_header "Training ECAPA-TDNN on First Segment for All Speakers"
+        python train_ecapa_models.py --first-part
+        print_success "ECAPA-TDNN first-segment training complete!"
+        ;;
+
+    train-first-speaker)
+        SPEAKER="${2:-03}"
+        print_header "Training ECAPA-TDNN on First Segment for Speaker $SPEAKER"
+        python train_ecapa_models.py --first-part --speaker "$SPEAKER"
+        print_success "ECAPA-TDNN first-segment training complete for speaker $SPEAKER!"
+        ;;
+
+    train-other-first)
+        print_header "Training ECAPA-TDNN on First Segment from other.csv (All Speakers)"
+        python train_ecapa_models.py --train-other --no-valid --first-part
+        print_success "ECAPA-TDNN other.csv first-segment training complete!"
+        ;;
+
+    train-other-first-speaker)
+        SPEAKER="${2:-03}"
+        print_header "Training ECAPA-TDNN on First Segment from other.csv for Speaker $SPEAKER"
+        python train_ecapa_models.py --train-other --no-valid --first-part --speaker "$SPEAKER"
+        print_success "ECAPA-TDNN other.csv first-segment training complete for speaker $SPEAKER!"
+        ;;
     
     train-lda)
         print_header "Training LDA Models for All Speakers"
@@ -205,6 +246,19 @@ case "$COMMAND" in
         print_header "Training PLDA for Speaker $SPEAKER"
         python train_plda_models.py --speaker "$SPEAKER"
         print_success "PLDA training complete for speaker $SPEAKER!"
+        ;;
+
+    train-plda-first)
+        print_header "Training PLDA Models (First Segment)"
+        python train_plda_models.py --all --first-part
+        print_success "PLDA training complete (first segment)!"
+        ;;
+
+    train-plda-first-speaker)
+        SPEAKER="${2:-03}"
+        print_header "Training PLDA for Speaker $SPEAKER (First Segment)"
+        python train_plda_models.py --speaker "$SPEAKER" --first-part
+        print_success "PLDA training complete for speaker $SPEAKER (first segment)!"
         ;;
 
     train-plda-dev)
@@ -346,6 +400,19 @@ build_test_firstpart_for_speaker("$SPEAKER")
 print("Test CSV build complete for speaker $SPEAKER")
 PY
         print_success "Test CSV (first segment) complete for speaker $SPEAKER!"
+        ;;
+
+    test-emotions-first)
+        print_header "Testing Centroid Classifier (First Segment)"
+        python test_emotion_models.py --all --first-part
+        print_success "Centroid testing complete (first segment)!"
+        ;;
+
+    test-emotions-first-speaker)
+        SPEAKER="${2:-03}"
+        print_header "Testing Centroid Classifier (First Segment) for Speaker $SPEAKER"
+        python test_emotion_models.py --speaker "$SPEAKER" --first-part
+        print_success "Centroid testing complete (first segment) for speaker $SPEAKER!"
         ;;
 
     score-plda)

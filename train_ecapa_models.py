@@ -23,7 +23,16 @@ from pathlib import Path
 from hyperpyyaml import load_hyperpyyaml
 
 from utils import get_config
-from utils.training import train_all_speakers, train_speaker_model, train_all_speakers_other, train_speaker_model_other
+from utils.training import (
+    train_all_speakers,
+    train_speaker_model,
+    train_all_speakers_other,
+    train_speaker_model_other,
+    train_all_speakers_firstpart,
+    train_speaker_model_firstpart,
+    train_all_speakers_other_firstpart,
+    train_speaker_model_other_firstpart
+)
 
 
 def parse_args():
@@ -71,6 +80,12 @@ def parse_args():
         '--train-other',
         action='store_true',
         help='Train using other.csv (all remaining speakers)'
+    )
+
+    parser.add_argument(
+        '--first-part',
+        action='store_true',
+        help='Train using only the first segment for each file'
     )
 
     parser.add_argument(
@@ -129,22 +144,41 @@ def main():
         print(f"Training single speaker: {args.speaker}")
 
         if args.train_other:
-            best_error = train_speaker_model_other(
-                speaker_id=args.speaker,
-                loso_dir=loso_dir,
-                output_dir=output_dir,
-                hparams=hparams,
-                run_opts=run_opts,
-                use_validation=not args.no_valid,
-            )
+            if args.first_part:
+                best_error = train_speaker_model_other_firstpart(
+                    speaker_id=args.speaker,
+                    loso_dir=loso_dir,
+                    output_dir=output_dir,
+                    hparams=hparams,
+                    run_opts=run_opts,
+                    use_validation=not args.no_valid,
+                )
+            else:
+                best_error = train_speaker_model_other(
+                    speaker_id=args.speaker,
+                    loso_dir=loso_dir,
+                    output_dir=output_dir,
+                    hparams=hparams,
+                    run_opts=run_opts,
+                    use_validation=not args.no_valid,
+                )
         else:
-            best_error = train_speaker_model(
-                speaker_id=args.speaker,
-                loso_dir=loso_dir,
-                output_dir=output_dir,
-                hparams=hparams,
-                run_opts=run_opts
-            )
+            if args.first_part:
+                best_error = train_speaker_model_firstpart(
+                    speaker_id=args.speaker,
+                    loso_dir=loso_dir,
+                    output_dir=output_dir,
+                    hparams=hparams,
+                    run_opts=run_opts
+                )
+            else:
+                best_error = train_speaker_model(
+                    speaker_id=args.speaker,
+                    loso_dir=loso_dir,
+                    output_dir=output_dir,
+                    hparams=hparams,
+                    run_opts=run_opts
+                )
         
         print(f"\n{separator}")
         print(f"Training complete for speaker {args.speaker}")
@@ -174,20 +208,37 @@ def main():
         print("Training all speakers...")
         
         if args.train_other:
-            results = train_all_speakers_other(
-                loso_dir=loso_dir,
-                output_dir=output_dir,
-                hparams_file=hparams,
-                run_opts=run_opts,
-                use_validation=not args.no_valid,
-            )
+            if args.first_part:
+                results = train_all_speakers_other_firstpart(
+                    loso_dir=loso_dir,
+                    output_dir=output_dir,
+                    hparams_file=hparams,
+                    run_opts=run_opts,
+                    use_validation=not args.no_valid,
+                )
+            else:
+                results = train_all_speakers_other(
+                    loso_dir=loso_dir,
+                    output_dir=output_dir,
+                    hparams_file=hparams,
+                    run_opts=run_opts,
+                    use_validation=not args.no_valid,
+                )
         else:
-            results = train_all_speakers(
-                loso_dir=loso_dir,
-                output_dir=output_dir,
-                hparams_file=hparams,
-                run_opts=run_opts
-            )
+            if args.first_part:
+                results = train_all_speakers_firstpart(
+                    loso_dir=loso_dir,
+                    output_dir=output_dir,
+                    hparams_file=hparams,
+                    run_opts=run_opts
+                )
+            else:
+                results = train_all_speakers(
+                    loso_dir=loso_dir,
+                    output_dir=output_dir,
+                    hparams_file=hparams,
+                    run_opts=run_opts
+                )
         
         # Save results
         results_file = os.path.join(output_dir, 'training_results.json')

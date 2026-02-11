@@ -12,7 +12,12 @@ Usage:
 import argparse
 from pathlib import Path
 
-from utils.testing import test_all_speakers, test_speaker_emotions
+from utils.testing import (
+    test_all_speakers,
+    test_speaker_emotions,
+    test_all_speakers_firstpart,
+    test_speaker_emotions_firstpart
+)
 
 
 def main():
@@ -48,27 +53,50 @@ def main():
         help="Output dir for test results (default: data/testing)"
     )
 
+    parser.add_argument(
+        "--first-part",
+        action="store_true",
+        help="Test using only the first segment for each file"
+    )
+
     args = parser.parse_args()
 
     base_dir = Path(args.base_dir).resolve() if args.base_dir else None
 
     if args.speaker:
-        result = test_speaker_emotions(
-            speaker_id=args.speaker,
-            base_dir=base_dir,
-            embeddings_dir=args.embeddings_dir,
-            train_out_dir=args.train_out_dir,
-            test_out_dir=args.test_out_dir
-        )
+        if args.first_part:
+            result = test_speaker_emotions_firstpart(
+                speaker_id=args.speaker,
+                base_dir=base_dir,
+                embeddings_dir=args.embeddings_dir,
+                train_out_dir=args.train_out_dir,
+                test_out_dir=args.test_out_dir
+            )
+        else:
+            result = test_speaker_emotions(
+                speaker_id=args.speaker,
+                base_dir=base_dir,
+                embeddings_dir=args.embeddings_dir,
+                train_out_dir=args.train_out_dir,
+                test_out_dir=args.test_out_dir
+            )
         print(f"Speaker {result.speaker_id} accuracy: {result.accuracy:.4f}")
         print(f"Results saved in: {result.output_dir}")
     else:
-        results = test_all_speakers(
-            base_dir=base_dir,
-            embeddings_dir=args.embeddings_dir,
-            train_out_dir=args.train_out_dir,
-            test_out_dir=args.test_out_dir
-        )
+        if args.first_part:
+            results = test_all_speakers_firstpart(
+                base_dir=base_dir,
+                embeddings_dir=args.embeddings_dir,
+                train_out_dir=args.train_out_dir,
+                test_out_dir=args.test_out_dir
+            )
+        else:
+            results = test_all_speakers(
+                base_dir=base_dir,
+                embeddings_dir=args.embeddings_dir,
+                train_out_dir=args.train_out_dir,
+                test_out_dir=args.test_out_dir
+            )
         print("Testing complete. Summary:")
         for speaker_id, result in results.items():
             if isinstance(result, dict) and "error" in result:

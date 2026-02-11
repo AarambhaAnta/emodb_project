@@ -40,6 +40,30 @@ def _whiten_embeddings(embeddings, eps=1e-6):
     return whitened, mean.squeeze(), whiten_mat
 
 
+def _is_first_part_id(sample_id):
+    if sample_id is None:
+        return False
+    text = str(sample_id)
+    if "_" not in text:
+        return True
+    _, suffix = text.rsplit("_", 1)
+    if suffix.isdigit():
+        return int(suffix) == 1
+    return True
+
+
+def _filter_first_part_arrays(embeddings, labels, ids):
+    keep_mask = np.array([_is_first_part_id(sample_id) for sample_id in ids], dtype=bool)
+    if not np.any(keep_mask):
+        raise ValueError("No first-part samples found")
+
+    filtered_embeddings = embeddings[keep_mask]
+    filtered_labels = labels[keep_mask] if labels is not None else None
+    filtered_ids = [sample_id for sample_id, keep in zip(ids, keep_mask) if keep]
+
+    return filtered_embeddings, filtered_labels, filtered_ids
+
+
 class PLDAModel:
     """Deprecated PLDA-style classifier wrapper (kept for backward compatibility)."""
     
@@ -593,4 +617,158 @@ def train_all_speakers_plda(
     print(f"\n✓ Combined results saved to {combined_results_path}")
     print(f"{'='*70}")
     
+    return all_results
+
+
+def train_speaker_plda_firstpart(
+    speaker_id,
+    loso_dir=None,
+    output_dir=None,
+    embeddings_dir=None,
+    embeddings_split="dev",
+    plda_dim=None,
+    plda_iters=10
+):
+    """Train PLDA model for a single speaker using only first-part embeddings."""
+    if loso_dir is None:
+        loso_dir = '/Users/adityakumar/Developer/Projects/emodb_project/data/processed/loso'
+
+    if output_dir is None:
+        output_dir = '/Users/adityakumar/Developer/Projects/emodb_project/output/models/plda'
+
+    speaker_dir = os.path.join(loso_dir, f"speaker_{speaker_id}")
+    train_csv = os.path.join(speaker_dir, "dev.csv")
+
+    if not os.path.exists(train_csv):
+        raise FileNotFoundError(f"Training CSV not found: {train_csv}")
+
+    print(f"\n{'='*70}")
+    print(f"Training PLDA for Speaker {speaker_id} (first part)")
+    print(f"{'='*70}")
+
+    if embeddings_dir and os.path.exists(embeddings_dir):
+        print("Loading pre-extracted embeddings...")
+        speaker_emb_dir = os.path.join(embeddings_dir, f"speaker_{speaker_id}")
+        train_emb_dir = os.path.join(speaker_emb_dir, embeddings_split)
+        train_emb_csv = os.path.join(speaker_emb_dir, f"{embeddings_split}_embeddings.csv")
+
+        if not os.path.exists(train_emb_csv):
+            raise FileNotFoundError(
+                f"Training embeddings CSV not found for split '{embeddings_split}': {train_emb_csv}"
+            )
+
+        X_train, y_train, train_ids = load_embeddings_from_npy(
+            train_emb_dir,
+            train_emb_csv
+        )
+
+        X_train, y_train, train_ids = _filter_first_part_arrays(X_train, y_train, train_ids)
+    else:
+        raise ValueError("Embeddings not available. Please extract embeddings from ECAPA-TDNN models first.")
+
+    X_train = _length_normalize(X_train)
+    X_train, whiten_mean, whiten_mat = _whiten_embeddings(X_train)
+
+    train_stat = _build_stat_object(X_train, y_train, train_ids)
+
+    embedding_dim = X_train.shape[1]
+    rank_f = plda_dim if plda_dim is not None else min(embedding_dim, 100)
+    plda = PLDA(rank_f=rank_f, nb_iter=plda_iters)
+    plda.plda(train_stat)
+
+    speaker_output_dir = os.path.join(output_dir, f"speaker_{speaker_id}")
+    os.makedirs(speaker_output_dir, exist_ok=True)
+    model_path = os.path.join(speaker_output_dir, "plda_model.pkl")
+    with open(model_path, "wb") as f:
+        pickle.dump(
+            {
+                "plda": plda,
+                "whiten_mean": whiten_mean,
+                "whiten_mat": whiten_mat,
+                "length_norm": True,
+                "first_part_only": True,
+            },
+            f,
+            pickle.HIGHEST_PROTOCOL,
+        )
+
+    results = {
+        'speaker': speaker_id,
+        'model_path': model_path,
+        'n_train_samples': len(train_ids),
+        'embedding_dim': embedding_dim,
+        'plda_dim': rank_f,
+        'plda_iters': plda_iters,
+        'first_part_only': True
+    }
+
+    results_path = os.path.join(speaker_output_dir, "plda_results.json")
+    with open(results_path, 'w') as f:
+        json.dump(results, f, indent=2)
+
+    print(f"\n✓ Results saved to {results_path}")
+
+    return results
+
+
+def train_all_speakers_plda_firstpart(
+    loso_dir=None,
+    output_dir=None,
+    embeddings_dir=None,
+    embeddings_split="dev",
+    plda_dim=None,
+    plda_iters=10
+):
+    """Train PLDA models for all speakers using only first-part embeddings."""
+    if loso_dir is None:
+        loso_dir = '/Users/adityakumar/Developer/Projects/emodb_project/data/processed/loso'
+
+    if output_dir is None:
+        output_dir = '/Users/adityakumar/Developer/Projects/emodb_project/output/models/plda'
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    speaker_dirs = sorted([d for d in os.listdir(loso_dir) if d.startswith('speaker_')])
+    speakers = [d.replace('speaker_', '') for d in speaker_dirs]
+
+    all_results = {}
+
+    for speaker_id in speakers:
+        try:
+            results = train_speaker_plda_firstpart(
+                speaker_id=speaker_id,
+                loso_dir=loso_dir,
+                output_dir=output_dir,
+                embeddings_dir=embeddings_dir,
+                embeddings_split=embeddings_split,
+                plda_dim=plda_dim,
+                plda_iters=plda_iters
+            )
+
+            all_results[speaker_id] = results
+
+        except Exception as e:
+            print(f"\n✗ Failed to train speaker {speaker_id}: {e}")
+            all_results[speaker_id] = {
+                'status': 'failed',
+                'error': str(e)
+            }
+
+    combined_results_path = os.path.join(output_dir, "plda_training_results.json")
+    with open(combined_results_path, 'w') as f:
+        json.dump(all_results, f, indent=2)
+
+    print(f"\n{'='*70}")
+    print("PLDA Training Summary (first part)")
+    print(f"{'='*70}")
+
+    successful = [s for s, r in all_results.items() if 'model_path' in r]
+    failed = [s for s, r in all_results.items() if 'status' in r and r['status'] == 'failed']
+
+    print(f"Successful: {len(successful)}/{len(speakers)}")
+    print(f"Failed: {len(failed)}/{len(speakers)}")
+
+    print(f"\n✓ Combined results saved to {combined_results_path}")
+    print(f"{'='*70}")
+
     return all_results

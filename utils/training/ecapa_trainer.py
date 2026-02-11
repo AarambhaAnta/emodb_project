@@ -27,6 +27,32 @@ BLUE = "\033[0;34m"
 NC = "\033[0m"
 
 
+def _is_first_part_id(sample_id):
+    if sample_id is None:
+        return False
+    text = str(sample_id)
+    if "_" not in text:
+        return True
+    _, suffix = text.rsplit("_", 1)
+    if suffix.isdigit():
+        return int(suffix) == 1
+    return True
+
+
+def _filter_first_part_csv(input_csv, output_csv):
+    df = pd.read_csv(input_csv)
+    if "id" not in df.columns:
+        raise ValueError(f"Missing 'id' column in {input_csv}")
+
+    filtered = df[df["id"].apply(_is_first_part_id)].copy()
+    if filtered.empty:
+        raise ValueError(f"No first-part rows found in {input_csv}")
+
+    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+    filtered.to_csv(output_csv, index=False)
+    return output_csv
+
+
 class EmotionBrain(sb.core.Brain):
     """Custom Brain class for emotion recognition training."""
     
@@ -461,6 +487,179 @@ def train_speaker_model_other(
     return best_valid_error
 
 
+def train_speaker_model_firstpart(
+    speaker_id,
+    loso_dir,
+    output_dir,
+    hparams,
+    run_opts,
+    tmp_dir="/tmp/emodb_training_firstpart",
+):
+    """
+    Train ECAPA-TDNN model for one speaker using only the first segment.
+    """
+    speaker_dir = os.path.join(loso_dir, f"speaker_{speaker_id}")
+    train_csv = os.path.join(speaker_dir, "dev.csv")
+    val_csv = os.path.join(speaker_dir, "train.csv")
+
+    if not os.path.exists(train_csv):
+        raise FileNotFoundError(f"Missing dev.csv for speaker {speaker_id}: {train_csv}")
+    if not os.path.exists(val_csv):
+        raise FileNotFoundError(f"Missing train.csv for speaker {speaker_id}: {val_csv}")
+
+    os.makedirs(tmp_dir, exist_ok=True)
+    train_filtered = os.path.join(tmp_dir, f"dev_firstpart_{speaker_id}.csv")
+    val_filtered = os.path.join(tmp_dir, f"train_firstpart_{speaker_id}.csv")
+
+    _filter_first_part_csv(train_csv, train_filtered)
+    _filter_first_part_csv(val_csv, val_filtered)
+
+    print(f"Loading first-part datasets for speaker {speaker_id}...")
+    train_data, valid_data = prepare_datasets(hparams, train_filtered, val_filtered, tmp_dir)
+    print(f"Train samples: {len(train_data)}, Valid samples: {len(valid_data)}")
+
+    speaker_output_dir = os.path.join(output_dir, f"speaker_{speaker_id}")
+    os.makedirs(speaker_output_dir, exist_ok=True)
+
+    hparams["save_folder"] = speaker_output_dir
+    if "checkpointer" in hparams and hparams["checkpointer"] is not None:
+        hparams["checkpointer"] = sb.utils.checkpoints.Checkpointer(
+            checkpoints_dir=speaker_output_dir,
+            recoverables={
+                "embedding_model": hparams["embedding_model"],
+                "classifier": hparams["classifier"],
+                "normalizer": hparams["mean_var_norm"],
+                "counter": hparams["epoch_counter"],
+            },
+        )
+
+    print(f"Initializing model for speaker {speaker_id}...")
+    brain = EmotionBrain(
+        modules=hparams["modules"],
+        opt_class=hparams["opt_class"],
+        hparams=hparams,
+        run_opts=run_opts,
+        checkpointer=hparams["checkpointer"],
+    )
+
+    print(f"Starting training for speaker {speaker_id} (first part only)...")
+    try:
+        brain.fit(
+            epoch_counter=hparams["epoch_counter"],
+            train_set=train_data,
+            valid_set=valid_data,
+            train_loader_kwargs=hparams["dataloader_options"],
+            valid_loader_kwargs=hparams["dataloader_options"],
+        )
+    except Exception as e:
+        print(f"ERROR during training for speaker {speaker_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+    best_valid_error = brain.last_valid_error if brain.last_valid_error is not None else float("inf")
+
+    model_path = os.path.join(speaker_output_dir, "model.pt")
+    torch.save(
+        {
+            "embedding_model": hparams["embedding_model"].state_dict(),
+            "classifier": hparams["classifier"].state_dict(),
+            "normalizer": hparams["mean_var_norm"].state_dict(),
+            "speaker_id": speaker_id,
+        },
+        model_path,
+    )
+    print(f"Saved model to: {model_path}")
+
+    return best_valid_error
+
+
+def train_speaker_model_other_firstpart(
+    speaker_id,
+    loso_dir,
+    output_dir,
+    hparams,
+    run_opts,
+    tmp_dir="/tmp/emodb_training_other_firstpart",
+    use_validation=False,
+    val_csv_name="train.csv",
+):
+    """Train ECAPA-TDNN model for one speaker using first-part rows from other.csv."""
+    speaker_dir = os.path.join(loso_dir, f"speaker_{speaker_id}")
+    train_csv = os.path.join(speaker_dir, "other.csv")
+    val_csv = os.path.join(speaker_dir, val_csv_name)
+
+    if not os.path.exists(train_csv):
+        raise FileNotFoundError(f"Missing other.csv for speaker {speaker_id}: {train_csv}")
+
+    os.makedirs(tmp_dir, exist_ok=True)
+    train_filtered = os.path.join(tmp_dir, f"other_firstpart_{speaker_id}.csv")
+    _filter_first_part_csv(train_csv, train_filtered)
+
+    if use_validation:
+        if not os.path.exists(val_csv):
+            raise FileNotFoundError(f"Missing {val_csv_name} for speaker {speaker_id}: {val_csv}")
+        val_filtered = os.path.join(tmp_dir, f"{val_csv_name}_firstpart_{speaker_id}.csv")
+        _filter_first_part_csv(val_csv, val_filtered)
+        train_data, valid_data = prepare_datasets(hparams, train_filtered, val_filtered, tmp_dir)
+    else:
+        train_data = prepare_train_dataset(hparams, train_filtered, tmp_dir)
+        valid_data = None
+
+    speaker_output_dir = os.path.join(output_dir, f"speaker_{speaker_id}")
+    os.makedirs(speaker_output_dir, exist_ok=True)
+
+    hparams["save_folder"] = speaker_output_dir
+    if "checkpointer" in hparams and hparams["checkpointer"] is not None:
+        hparams["checkpointer"] = sb.utils.checkpoints.Checkpointer(
+            checkpoints_dir=speaker_output_dir,
+            recoverables={
+                "embedding_model": hparams["embedding_model"],
+                "classifier": hparams["classifier"],
+                "normalizer": hparams["mean_var_norm"],
+                "counter": hparams["epoch_counter"],
+            },
+        )
+
+    brain = EmotionBrain(
+        modules=hparams["modules"],
+        opt_class=hparams["opt_class"],
+        hparams=hparams,
+        run_opts=run_opts,
+        checkpointer=hparams["checkpointer"],
+    )
+
+    try:
+        brain.fit(
+            epoch_counter=hparams["epoch_counter"],
+            train_set=train_data,
+            valid_set=valid_data,
+            train_loader_kwargs=hparams["dataloader_options"],
+            valid_loader_kwargs=hparams["dataloader_options"],
+        )
+    except Exception as e:
+        print(f"ERROR during training for speaker {speaker_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+    best_valid_error = brain.last_valid_error if use_validation else None
+
+    model_path = os.path.join(speaker_output_dir, "model.pt")
+    torch.save(
+        {
+            "embedding_model": hparams["embedding_model"].state_dict(),
+            "classifier": hparams["classifier"].state_dict(),
+            "normalizer": hparams["mean_var_norm"].state_dict(),
+            "speaker_id": speaker_id,
+        },
+        model_path,
+    )
+    print(f"Saved model to: {model_path}")
+
+    return best_valid_error
+
+
 def train_all_speakers(loso_dir=None, output_dir=None, hparams_file=None, run_opts=None):
     """
     Train ECAPA-TDNN models for all speakers using LOSO.
@@ -583,6 +782,142 @@ def train_all_speakers_other(
                 speaker_hparams = load_hyperpyyaml(f)
 
             best_error = train_speaker_model_other(
+                speaker_id=speaker_id,
+                loso_dir=loso_dir,
+                output_dir=output_dir,
+                hparams=speaker_hparams,
+                run_opts=run_opts,
+                use_validation=use_validation,
+                val_csv_name=val_csv_name,
+            )
+
+            results[speaker_id] = {
+                'status': 'success',
+                'best_error': best_error
+            }
+
+            if best_error is not None:
+                print(f"{RED}✓ Speaker {speaker_id} - Best error: {best_error:.4f}{NC}")
+            else:
+                print(f"{RED}✓ Speaker {speaker_id} - Training complete (no validation){NC}")
+
+        except Exception as e:
+            results[speaker_id] = {
+                'status': 'failed',
+                'error': str(e)
+            }
+            print(f"✗ Speaker {speaker_id} - Failed: {e}")
+
+    return results
+
+
+def train_all_speakers_firstpart(loso_dir=None, output_dir=None, hparams_file=None, run_opts=None):
+    """Train ECAPA-TDNN models for all speakers using only first-part segments."""
+    config = None
+    if loso_dir is None or output_dir is None or isinstance(hparams_file, dict) or hparams_file is None:
+        config = get_config()
+
+    if loso_dir is None:
+        loso_dir_path = config.get('LOSO', {}).get('OUTPUT_DIR', config.get('PATHS', {}).get('LOSO', 'data/processed/loso'))
+        loso_dir = get_path(config, loso_dir_path)
+
+    if output_dir is None:
+        output_dir_path = config.get('PATHS', {}).get('MODELS', 'output/models')
+        output_dir = get_path(config, output_dir_path)
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    if isinstance(hparams_file, dict) or hparams_file is None:
+        hparams_path = os.path.join(config['BASE_DIR'], 'config', 'ecapa_hparams.yaml')
+    else:
+        hparams_path = hparams_file
+
+    speaker_dirs = sorted([d for d in os.listdir(loso_dir) if d.startswith('speaker_')])
+    speakers = [d.replace('speaker_', '') for d in speaker_dirs]
+
+    results = {}
+
+    for speaker_id in tqdm(speakers, desc="Training speakers (first part)"):
+        print(f"\n{BLUE}{'='*70}{NC}")
+        print(f"{RED}Training speaker {speaker_id} (first part){NC}")
+        print(f"{BLUE}{'='*70}{NC}")
+
+        try:
+            from hyperpyyaml import load_hyperpyyaml
+            print(f"Loading fresh hyperparameters for speaker {speaker_id}...")
+            with open(hparams_path) as f:
+                speaker_hparams = load_hyperpyyaml(f)
+
+            best_error = train_speaker_model_firstpart(
+                speaker_id=speaker_id,
+                loso_dir=loso_dir,
+                output_dir=output_dir,
+                hparams=speaker_hparams,
+                run_opts=run_opts,
+            )
+
+            results[speaker_id] = {
+                'status': 'success',
+                'best_error': best_error
+            }
+
+            print(f"{RED}✓ Speaker {speaker_id} - Best error: {best_error:.4f}{NC}")
+
+        except Exception as e:
+            results[speaker_id] = {
+                'status': 'failed',
+                'error': str(e)
+            }
+            print(f"✗ Speaker {speaker_id} - Failed: {e}")
+
+    return results
+
+
+def train_all_speakers_other_firstpart(
+    loso_dir=None,
+    output_dir=None,
+    hparams_file=None,
+    run_opts=None,
+    use_validation=False,
+    val_csv_name="train.csv",
+):
+    """Train ECAPA-TDNN models for all speakers using first-part rows from other.csv."""
+    config = None
+    if loso_dir is None or output_dir is None or isinstance(hparams_file, dict) or hparams_file is None:
+        config = get_config()
+
+    if loso_dir is None:
+        loso_dir_path = config.get('LOSO', {}).get('OUTPUT_DIR', config.get('PATHS', {}).get('LOSO', 'data/processed/loso'))
+        loso_dir = get_path(config, loso_dir_path)
+
+    if output_dir is None:
+        output_dir_path = config.get('PATHS', {}).get('MODELS', 'output/models')
+        output_dir = get_path(config, output_dir_path)
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    if isinstance(hparams_file, dict) or hparams_file is None:
+        hparams_path = os.path.join(config['BASE_DIR'], 'config', 'ecapa_hparams.yaml')
+    else:
+        hparams_path = hparams_file
+
+    speaker_dirs = sorted([d for d in os.listdir(loso_dir) if d.startswith('speaker_')])
+    speakers = [d.replace('speaker_', '') for d in speaker_dirs]
+
+    results = {}
+
+    for speaker_id in tqdm(speakers, desc="Training speakers (other first part)"):
+        print(f"\n{BLUE}{'='*70}{NC}")
+        print(f"{RED}Training speaker {speaker_id} (other first part){NC}")
+        print(f"{BLUE}{'='*70}{NC}")
+
+        try:
+            from hyperpyyaml import load_hyperpyyaml
+            print(f"Loading fresh hyperparameters for speaker {speaker_id}...")
+            with open(hparams_path) as f:
+                speaker_hparams = load_hyperpyyaml(f)
+
+            best_error = train_speaker_model_other_firstpart(
                 speaker_id=speaker_id,
                 loso_dir=loso_dir,
                 output_dir=output_dir,

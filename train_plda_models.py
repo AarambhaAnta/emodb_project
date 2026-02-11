@@ -29,7 +29,12 @@ from pathlib import Path
 project_root = Path(__file__).parent.absolute()
 sys.path.insert(0, str(project_root))
 
-from utils.training.plda_trainer import train_speaker_plda, train_all_speakers_plda
+from utils.training.plda_trainer import (
+    train_speaker_plda,
+    train_all_speakers_plda,
+    train_speaker_plda_firstpart,
+    train_all_speakers_plda_firstpart
+)
 import hyperpyyaml
 
 
@@ -137,6 +142,12 @@ Examples:
         default='dev',
         help='Embeddings split name under each speaker (e.g., dev, other)'
     )
+
+    parser.add_argument(
+        '--first-part',
+        action='store_true',
+        help='Train using only the first segment for each file'
+    )
     
     args = parser.parse_args()
     
@@ -192,15 +203,26 @@ Examples:
             sys.exit(1)
         
         try:
-            results = train_speaker_plda(
-                speaker_id=args.speaker,
-                loso_dir=str(loso_dir),
-                output_dir=str(output_dir),
-                embeddings_dir=embeddings_dir,
-                embeddings_split=args.embeddings_split,
-                plda_dim=plda_dim,
-                plda_iters=plda_iters
-            )
+            if args.first_part:
+                results = train_speaker_plda_firstpart(
+                    speaker_id=args.speaker,
+                    loso_dir=str(loso_dir),
+                    output_dir=str(output_dir),
+                    embeddings_dir=embeddings_dir,
+                    embeddings_split=args.embeddings_split,
+                    plda_dim=plda_dim,
+                    plda_iters=plda_iters
+                )
+            else:
+                results = train_speaker_plda(
+                    speaker_id=args.speaker,
+                    loso_dir=str(loso_dir),
+                    output_dir=str(output_dir),
+                    embeddings_dir=embeddings_dir,
+                    embeddings_split=args.embeddings_split,
+                    plda_dim=plda_dim,
+                    plda_iters=plda_iters
+                )
             
             print(f"\n{'='*70}")
             print(f"Training Complete!")
@@ -223,14 +245,24 @@ Examples:
         print("Training PLDA models for all speakers...")
         
         try:
-            all_results = train_all_speakers_plda(
-                loso_dir=str(loso_dir),
-                output_dir=str(output_dir),
-                embeddings_dir=embeddings_dir,
-                embeddings_split=args.embeddings_split,
-                plda_dim=plda_dim,
-                plda_iters=plda_iters
-            )
+            if args.first_part:
+                all_results = train_all_speakers_plda_firstpart(
+                    loso_dir=str(loso_dir),
+                    output_dir=str(output_dir),
+                    embeddings_dir=embeddings_dir,
+                    embeddings_split=args.embeddings_split,
+                    plda_dim=plda_dim,
+                    plda_iters=plda_iters
+                )
+            else:
+                all_results = train_all_speakers_plda(
+                    loso_dir=str(loso_dir),
+                    output_dir=str(output_dir),
+                    embeddings_dir=embeddings_dir,
+                    embeddings_split=args.embeddings_split,
+                    plda_dim=plda_dim,
+                    plda_iters=plda_iters
+                )
             
             print(f"\n{'='*70}")
             print(f"All Training Complete!")

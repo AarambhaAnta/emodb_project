@@ -80,6 +80,30 @@ def _base_id(sample_id):
     return text
 
 
+def _is_first_part_id(sample_id):
+    if sample_id is None:
+        return False
+    text = str(sample_id)
+    if "_" not in text:
+        return True
+    _, suffix = text.rsplit("_", 1)
+    if suffix.isdigit():
+        return int(suffix) == 1
+    return True
+
+
+def _filter_first_part_arrays(embeddings, labels, ids):
+    keep_mask = np.array([_is_first_part_id(sample_id) for sample_id in ids], dtype=bool)
+    if not np.any(keep_mask):
+        raise ValueError("No first-part samples found")
+
+    filtered_embeddings = embeddings[keep_mask]
+    filtered_labels = labels[keep_mask]
+    filtered_ids = [sample_id for sample_id, keep in zip(ids, keep_mask) if keep]
+
+    return filtered_embeddings, filtered_labels, filtered_ids
+
+
 @dataclass
 class EmotionCentroidResult:
     speaker_id: str
@@ -432,6 +456,58 @@ class EmotionCentroidTester:
             output_dir=str(out_dir)
         )
 
+    def evaluate_firstpart(self, speaker_id):
+        centroids, centroid_labels, _, train_count = self.compute_centroids(speaker_id)
+
+        speaker_dir = self.embeddings_dir / f"speaker_{speaker_id}"
+        test_csv = speaker_dir / self.test_csv_name
+        if not test_csv.exists():
+            raise FileNotFoundError(f"Test embeddings CSV not found: {test_csv}")
+
+        X_test, y_test, ids = _load_embeddings_from_csv(str(test_csv), self.base_dir)
+        X_test, y_test, ids = _filter_first_part_arrays(X_test, y_test, ids)
+        X_test = _length_normalize(X_test)
+
+        scores = X_test @ centroids.T
+        pred_idx = np.argmax(scores, axis=1)
+        y_pred = np.array([centroid_labels[i] for i in pred_idx])
+
+        accuracy = accuracy_score(y_test, y_pred)
+        report = classification_report(
+            y_test,
+            y_pred,
+            labels=sorted(EMOTION_LABELS.keys()),
+            target_names=[EMOTION_LABELS[i] for i in sorted(EMOTION_LABELS.keys())],
+            zero_division=0,
+            output_dict=True
+        )
+        conf_mat = confusion_matrix(y_test, y_pred, labels=sorted(EMOTION_LABELS.keys()))
+
+        out_dir = self.test_out_dir / f"speaker_{speaker_id}" / "firstpart"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        results = {
+            "speaker_id": speaker_id,
+            "train_count": int(train_count),
+            "test_count": int(len(y_test)),
+            "accuracy": float(accuracy),
+            "confusion_matrix": conf_mat.tolist(),
+            "classification_report": report,
+            "first_part_only": True
+        }
+
+        results_path = out_dir / "test_results.json"
+        with open(results_path, "w") as f:
+            json.dump(results, f, indent=2)
+
+        return EmotionCentroidResult(
+            speaker_id=speaker_id,
+            train_count=int(train_count),
+            test_count=int(len(y_test)),
+            accuracy=float(accuracy),
+            output_dir=str(out_dir)
+        )
+
 
 def test_speaker_emotions(
     speaker_id,
@@ -447,6 +523,22 @@ def test_speaker_emotions(
         test_out_dir=test_out_dir
     )
     return tester.evaluate(speaker_id)
+
+
+def test_speaker_emotions_firstpart(
+    speaker_id,
+    base_dir=None,
+    embeddings_dir=None,
+    train_out_dir=None,
+    test_out_dir=None
+):
+    tester = EmotionCentroidTester(
+        base_dir=base_dir,
+        embeddings_dir=embeddings_dir,
+        train_out_dir=train_out_dir,
+        test_out_dir=test_out_dir
+    )
+    return tester.evaluate_firstpart(speaker_id)
 
 
 def test_all_speakers(
@@ -472,6 +564,35 @@ def test_all_speakers(
         speaker_id = speaker_dir.replace("speaker_", "")
         try:
             results[speaker_id] = tester.evaluate(speaker_id)
+        except Exception as exc:
+            results[speaker_id] = {"error": str(exc)}
+
+    return results
+
+
+def test_all_speakers_firstpart(
+    base_dir=None,
+    embeddings_dir=None,
+    train_out_dir=None,
+    test_out_dir=None
+):
+    tester = EmotionCentroidTester(
+        base_dir=base_dir,
+        embeddings_dir=embeddings_dir,
+        train_out_dir=train_out_dir,
+        test_out_dir=test_out_dir
+    )
+
+    if not tester.embeddings_dir.exists():
+        raise FileNotFoundError(f"Embeddings directory not found: {tester.embeddings_dir}")
+
+    speaker_dirs = sorted([d.name for d in tester.embeddings_dir.iterdir() if d.is_dir() and d.name.startswith("speaker_")])
+    results = {}
+
+    for speaker_dir in speaker_dirs:
+        speaker_id = speaker_dir.replace("speaker_", "")
+        try:
+            results[speaker_id] = tester.evaluate_firstpart(speaker_id)
         except Exception as exc:
             results[speaker_id] = {"error": str(exc)}
 

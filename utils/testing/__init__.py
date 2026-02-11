@@ -11,7 +11,9 @@ from .emotion_testing import (
     build_test_noavg_for_all,
     build_test_noavg_for_speaker,
     test_speaker_emotions,
-    test_all_speakers
+    test_all_speakers,
+    test_speaker_emotions_firstpart,
+    test_all_speakers_firstpart
 )
 from .plda_scoring import (
     score_all_speakers_plda,
@@ -31,5 +33,7 @@ __all__ = [
     "score_all_speakers_plda",
     "score_speaker_plda",
     "test_speaker_emotions",
-    "test_all_speakers"
+    "test_all_speakers",
+    "test_speaker_emotions_firstpart",
+    "test_all_speakers_firstpart"
 ]
