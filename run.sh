@@ -68,6 +68,8 @@ usage() {
     echo "  extract-embeddings-speaker N - Extract embeddings for specific speaker"
     echo "  avg-embeddings     - Average train embeddings per emotion for all speakers"
     echo "  avg-embeddings-speaker N - Average train embeddings for a speaker"
+    echo "  avg-embeddings-other     - Average other embeddings per emotion for all speakers"
+    echo "  avg-embeddings-other-speaker N - Average other embeddings for a speaker"
     echo "  avg-test-embeddings     - Average test embeddings by base id for all speakers"
     echo "  avg-test-embeddings-speaker N - Average test embeddings by base id for a speaker"
     echo "  test-noavg        - Build test CSV without averaging"
@@ -102,6 +104,8 @@ usage() {
     echo "  ./run.sh train-plda-other-speaker 03  # Train PLDA on other embeddings for speaker 03"
     echo "  ./run.sh avg-embeddings    # Average train embeddings per emotion"
     echo "  ./run.sh avg-embeddings-speaker 03  # Average train embeddings for speaker 03"
+    echo "  ./run.sh avg-embeddings-other    # Average other embeddings per emotion"
+    echo "  ./run.sh avg-embeddings-other-speaker 03  # Average other embeddings for speaker 03"
     echo "  ./run.sh avg-test-embeddings    # Average test embeddings by base id"
     echo "  ./run.sh avg-test-embeddings-speaker 03  # Average test embeddings for speaker 03"
     echo "  ./run.sh test-noavg    # Build test CSV without averaging"
@@ -246,6 +250,29 @@ average_emotion_embeddings_for_speaker("$SPEAKER")
 print("Averaging complete for speaker $SPEAKER")
 PY
         print_success "Emotion-wise averaging complete for speaker $SPEAKER!"
+        ;;
+
+    avg-embeddings-other)
+        print_header "Averaging Other Embeddings per Emotion"
+        python - <<'PY'
+from utils.testing import average_emotion_embeddings_for_all
+
+average_emotion_embeddings_for_all(train_csv_name="other_embeddings.csv")
+print("Averaging complete")
+PY
+        print_success "Emotion-wise averaging complete (other embeddings)!"
+        ;;
+
+    avg-embeddings-other-speaker)
+        SPEAKER="${2:-03}"
+        print_header "Averaging Other Embeddings per Emotion for Speaker $SPEAKER"
+        python - <<PY
+from utils.testing import average_emotion_embeddings_for_speaker
+
+average_emotion_embeddings_for_speaker("$SPEAKER", train_csv_name="other_embeddings.csv")
+print("Averaging complete for speaker $SPEAKER")
+PY
+        print_success "Emotion-wise averaging complete for speaker $SPEAKER (other embeddings)!"
         ;;
 
     avg-test-embeddings)

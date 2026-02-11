@@ -92,7 +92,15 @@ class EmotionCentroidResult:
 class EmotionCentroidTester:
     """Compute emotion centroids and classify test embeddings by cosine similarity."""
 
-    def __init__(self, base_dir=None, embeddings_dir=None, train_out_dir=None, test_out_dir=None):
+    def __init__(
+        self,
+        base_dir=None,
+        embeddings_dir=None,
+        train_out_dir=None,
+        test_out_dir=None,
+        train_csv_name="train_embeddings.csv",
+        test_csv_name="test_embeddings.csv",
+    ):
         config = get_config()
         self.base_dir = Path(base_dir or config.get("BASE_DIR", Path(__file__).resolve().parents[2]))
 
@@ -104,11 +112,13 @@ class EmotionCentroidTester:
         self.embeddings_dir = Path(embeddings_dir or embeddings_default)
         self.train_out_dir = Path(train_out_dir or training_default)
         self.test_out_dir = Path(test_out_dir or testing_default)
+        self.train_csv_name = train_csv_name
+        self.test_csv_name = test_csv_name
 
     def average_train_embeddings(self, speaker_id, output_base=None):
         """Average train embeddings per emotion and save to data/testing/speaker_{id}/train."""
         speaker_dir = self.embeddings_dir / f"speaker_{speaker_id}"
-        train_csv = speaker_dir / "train_embeddings.csv"
+        train_csv = speaker_dir / self.train_csv_name
         if not train_csv.exists():
             raise FileNotFoundError(f"Training embeddings CSV not found: {train_csv}")
 
@@ -152,7 +162,7 @@ class EmotionCentroidTester:
     def build_test_embeddings_noavg(self, speaker_id, output_base=None):
         """Build test CSV without averaging parts; one row per segment per emotion."""
         speaker_dir = self.embeddings_dir / f"speaker_{speaker_id}"
-        test_csv = speaker_dir / "test_embeddings.csv"
+        test_csv = speaker_dir / self.test_csv_name
         if not test_csv.exists():
             raise FileNotFoundError(f"Test embeddings CSV not found: {test_csv}")
 
@@ -195,7 +205,7 @@ class EmotionCentroidTester:
     def average_test_embeddings(self, speaker_id, output_base=None):
         """Average test embeddings by base id and save to data/testing/speaker_{id}/test."""
         speaker_dir = self.embeddings_dir / f"speaker_{speaker_id}"
-        test_csv = speaker_dir / "test_embeddings.csv"
+        test_csv = speaker_dir / self.test_csv_name
         if not test_csv.exists():
             raise FileNotFoundError(f"Test embeddings CSV not found: {test_csv}")
 
@@ -248,7 +258,7 @@ class EmotionCentroidTester:
 
     def compute_centroids(self, speaker_id):
         speaker_dir = self.embeddings_dir / f"speaker_{speaker_id}"
-        train_csv = speaker_dir / "train_embeddings.csv"
+        train_csv = speaker_dir / self.train_csv_name
         if not train_csv.exists():
             raise FileNotFoundError(f"Training embeddings CSV not found: {train_csv}")
 
@@ -300,7 +310,7 @@ class EmotionCentroidTester:
         centroids, centroid_labels, _, train_count = self.compute_centroids(speaker_id)
 
         speaker_dir = self.embeddings_dir / f"speaker_{speaker_id}"
-        test_csv = speaker_dir / "test_embeddings.csv"
+        test_csv = speaker_dir / self.test_csv_name
         if not test_csv.exists():
             raise FileNotFoundError(f"Test embeddings CSV not found: {test_csv}")
 
@@ -411,11 +421,13 @@ def average_emotion_embeddings_for_speaker(
     speaker_id,
     base_dir=None,
     embeddings_dir=None,
-    output_base=None
+    output_base=None,
+    train_csv_name="train_embeddings.csv"
 ):
     tester = EmotionCentroidTester(
         base_dir=base_dir,
-        embeddings_dir=embeddings_dir
+        embeddings_dir=embeddings_dir,
+        train_csv_name=train_csv_name
     )
     return tester.average_train_embeddings(speaker_id, output_base=output_base)
 
@@ -423,11 +435,13 @@ def average_emotion_embeddings_for_speaker(
 def average_emotion_embeddings_for_all(
     base_dir=None,
     embeddings_dir=None,
-    output_base=None
+    output_base=None,
+    train_csv_name="train_embeddings.csv"
 ):
     tester = EmotionCentroidTester(
         base_dir=base_dir,
-        embeddings_dir=embeddings_dir
+        embeddings_dir=embeddings_dir,
+        train_csv_name=train_csv_name
     )
 
     if not tester.embeddings_dir.exists():
@@ -450,11 +464,13 @@ def average_test_embeddings_for_speaker(
     speaker_id,
     base_dir=None,
     embeddings_dir=None,
-    output_base=None
+    output_base=None,
+    test_csv_name="test_embeddings.csv"
 ):
     tester = EmotionCentroidTester(
         base_dir=base_dir,
-        embeddings_dir=embeddings_dir
+        embeddings_dir=embeddings_dir,
+        test_csv_name=test_csv_name
     )
     return tester.average_test_embeddings(speaker_id, output_base=output_base)
 
@@ -462,11 +478,13 @@ def average_test_embeddings_for_speaker(
 def average_test_embeddings_for_all(
     base_dir=None,
     embeddings_dir=None,
-    output_base=None
+    output_base=None,
+    test_csv_name="test_embeddings.csv"
 ):
     tester = EmotionCentroidTester(
         base_dir=base_dir,
-        embeddings_dir=embeddings_dir
+        embeddings_dir=embeddings_dir,
+        test_csv_name=test_csv_name
     )
 
     if not tester.embeddings_dir.exists():
@@ -489,11 +507,13 @@ def build_test_noavg_for_speaker(
     speaker_id,
     base_dir=None,
     embeddings_dir=None,
-    output_base=None
+    output_base=None,
+    test_csv_name="test_embeddings.csv"
 ):
     tester = EmotionCentroidTester(
         base_dir=base_dir,
-        embeddings_dir=embeddings_dir
+        embeddings_dir=embeddings_dir,
+        test_csv_name=test_csv_name
     )
     return tester.build_test_embeddings_noavg(speaker_id, output_base=output_base)
 
@@ -501,11 +521,13 @@ def build_test_noavg_for_speaker(
 def build_test_noavg_for_all(
     base_dir=None,
     embeddings_dir=None,
-    output_base=None
+    output_base=None,
+    test_csv_name="test_embeddings.csv"
 ):
     tester = EmotionCentroidTester(
         base_dir=base_dir,
-        embeddings_dir=embeddings_dir
+        embeddings_dir=embeddings_dir,
+        test_csv_name=test_csv_name
     )
 
     if not tester.embeddings_dir.exists():
