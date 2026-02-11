@@ -256,6 +256,67 @@ class EmotionCentroidTester:
 
         return summary_csv
 
+    def build_test_embeddings_firstpart(self, speaker_id, output_base=None):
+        """Pick the first segment per base id and save to data/testing/speaker_{id}/test."""
+        speaker_dir = self.embeddings_dir / f"speaker_{speaker_id}"
+        test_csv = speaker_dir / self.test_csv_name
+        if not test_csv.exists():
+            raise FileNotFoundError(f"Test embeddings CSV not found: {test_csv}")
+
+        df = pd.read_csv(test_csv)
+        if "embedding" not in df.columns:
+            raise ValueError(f"Missing 'embedding' column in {test_csv}")
+
+        output_root = Path(output_base) if output_base else self.test_out_dir
+        out_dir = output_root / f"speaker_{speaker_id}" / "test"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        grouped = {}
+        for _, row in df.iterrows():
+            sample_id = row.get("id")
+            label = row.get("label")
+            emb_path = _resolve_path(self.base_dir, row["embedding"])
+            if not sample_id or emb_path is None or not os.path.exists(emb_path):
+                continue
+            base = _base_id(sample_id)
+            if base is None:
+                continue
+            grouped.setdefault(base, []).append((str(sample_id), emb_path, label))
+
+        if not grouped:
+            raise ValueError(f"No test embeddings grouped for speaker {speaker_id}")
+
+        rows = []
+        for base, items in sorted(grouped.items()):
+            items_sorted = sorted(items, key=lambda entry: entry[0])
+            sample_id, emb_path, label = items_sorted[0]
+
+            emb = np.load(emb_path)
+            emb = np.asarray(emb, dtype=np.float64)
+            if np.isnan(emb).any() or np.isinf(emb).any():
+                emb = np.nan_to_num(emb, nan=0.0, posinf=0.0, neginf=0.0)
+
+            out_path = out_dir / f"{base}.npy"
+            np.save(out_path, emb)
+
+            for emotion_id in sorted(EMOTION_LABELS.keys()):
+                emotion_path = self.train_out_dir / f"speaker_{speaker_id}" / "train" / f"emotion_{emotion_id}.npy"
+                if pd.isna(label):
+                    gt_value = None
+                else:
+                    gt_value = 1 if int(emotion_id) == int(label) else 0
+                rows.append({
+                    "id": base,
+                    "embedding_path": str(out_path),
+                    "emotion_path": str(emotion_path),
+                    "ground_truth": gt_value
+                })
+
+        summary_csv = output_root / f"speaker_{speaker_id}" / "test_first_embeddings.csv"
+        pd.DataFrame(rows).to_csv(summary_csv, index=False)
+
+        return summary_csv
+
     def compute_centroids(self, speaker_id):
         speaker_dir = self.embeddings_dir / f"speaker_{speaker_id}"
         train_csv = speaker_dir / self.train_csv_name
@@ -518,6 +579,21 @@ def build_test_noavg_for_speaker(
     return tester.build_test_embeddings_noavg(speaker_id, output_base=output_base)
 
 
+def build_test_firstpart_for_speaker(
+    speaker_id,
+    base_dir=None,
+    embeddings_dir=None,
+    output_base=None,
+    test_csv_name="test_embeddings.csv"
+):
+    tester = EmotionCentroidTester(
+        base_dir=base_dir,
+        embeddings_dir=embeddings_dir,
+        test_csv_name=test_csv_name
+    )
+    return tester.build_test_embeddings_firstpart(speaker_id, output_base=output_base)
+
+
 def build_test_noavg_for_all(
     base_dir=None,
     embeddings_dir=None,
@@ -540,6 +616,34 @@ def build_test_noavg_for_all(
         speaker_id = speaker_dir.replace("speaker_", "")
         try:
             outputs[speaker_id] = tester.build_test_embeddings_noavg(speaker_id, output_base=output_base)
+        except Exception as exc:
+            outputs[speaker_id] = {"error": str(exc)}
+
+    return outputs
+
+
+def build_test_firstpart_for_all(
+    base_dir=None,
+    embeddings_dir=None,
+    output_base=None,
+    test_csv_name="test_embeddings.csv"
+):
+    tester = EmotionCentroidTester(
+        base_dir=base_dir,
+        embeddings_dir=embeddings_dir,
+        test_csv_name=test_csv_name
+    )
+
+    if not tester.embeddings_dir.exists():
+        raise FileNotFoundError(f"Embeddings directory not found: {tester.embeddings_dir}")
+
+    speaker_dirs = sorted([d.name for d in tester.embeddings_dir.iterdir() if d.is_dir() and d.name.startswith("speaker_")])
+    outputs = {}
+
+    for speaker_dir in speaker_dirs:
+        speaker_id = speaker_dir.replace("speaker_", "")
+        try:
+            outputs[speaker_id] = tester.build_test_embeddings_firstpart(speaker_id, output_base=output_base)
         except Exception as exc:
             outputs[speaker_id] = {"error": str(exc)}
 

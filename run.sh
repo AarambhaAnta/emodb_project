@@ -74,6 +74,8 @@ usage() {
     echo "  avg-test-embeddings-speaker N - Average test embeddings by base id for a speaker"
     echo "  test-noavg        - Build test CSV without averaging"
     echo "  test-noavg-speaker N - Build test CSV without averaging for a speaker"
+    echo "  test-first        - Build test CSV using first segment per base id"
+    echo "  test-first-speaker N - Build test CSV using first segment per base id for a speaker"
     echo "  score-plda        - PLDA scoring for all speakers"
     echo "  score-plda-speaker N - PLDA scoring for a speaker"
     echo "  score-plda-noavg        - PLDA scoring using test_noavg_embeddings.csv"
@@ -110,6 +112,8 @@ usage() {
     echo "  ./run.sh avg-test-embeddings-speaker 03  # Average test embeddings for speaker 03"
     echo "  ./run.sh test-noavg    # Build test CSV without averaging"
     echo "  ./run.sh test-noavg-speaker 03  # Build test CSV without averaging for speaker 03"
+    echo "  ./run.sh test-first    # Build test CSV using first segment per base id"
+    echo "  ./run.sh test-first-speaker 03  # Build test CSV using first segment per base id for speaker 03"
     echo "  ./run.sh score-plda    # PLDA scoring for all speakers"
     echo "  ./run.sh score-plda-speaker 03  # PLDA scoring for speaker 03"
     echo "  ./run.sh score-plda-noavg    # PLDA scoring using noavg test CSV"
@@ -321,6 +325,29 @@ PY
         print_success "Test CSV (no averaging) complete for speaker $SPEAKER!"
         ;;
 
+    test-first)
+        print_header "Building Test CSV Using First Segment per Base Id"
+        python - <<'PY'
+from utils.testing import build_test_firstpart_for_all
+
+build_test_firstpart_for_all()
+print("Test CSV build complete")
+PY
+        print_success "Test CSV (first segment) complete!"
+        ;;
+
+    test-first-speaker)
+        SPEAKER="${2:-03}"
+        print_header "Building Test CSV Using First Segment per Base Id for Speaker $SPEAKER"
+        python - <<PY
+from utils.testing import build_test_firstpart_for_speaker
+
+build_test_firstpart_for_speaker("$SPEAKER")
+print("Test CSV build complete for speaker $SPEAKER")
+PY
+        print_success "Test CSV (first segment) complete for speaker $SPEAKER!"
+        ;;
+
     score-plda)
         print_header "PLDA Scoring for All Speakers"
         python - <<'PY'
@@ -365,6 +392,29 @@ score_speaker_plda("$SPEAKER", test_csv_name="test_noavg_embeddings.csv")
 print("PLDA scoring (noavg) complete for speaker $SPEAKER")
 PY
         print_success "PLDA scoring (noavg) complete for speaker $SPEAKER!"
+        ;;
+
+    score-plda-first)
+        print_header "PLDA Scoring (First Segment) for All Speakers"
+        python - <<'PY'
+from utils.testing import score_all_speakers_plda
+
+score_all_speakers_plda(test_csv_name="test_first_embeddings.csv")
+print("PLDA scoring (first segment) complete")
+PY
+        print_success "PLDA scoring (first segment) complete!"
+        ;;
+
+    score-plda-first-speaker)
+        SPEAKER="${2:-03}"
+        print_header "PLDA Scoring (First Segment) for Speaker $SPEAKER"
+        python - <<PY
+from utils.testing import score_speaker_plda
+
+score_speaker_plda("$SPEAKER", test_csv_name="test_first_embeddings.csv")
+print("PLDA scoring (first segment) complete for speaker $SPEAKER")
+PY
+        print_success "PLDA scoring (first segment) complete for speaker $SPEAKER!"
         ;;
     
     metadata)
