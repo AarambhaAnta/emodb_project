@@ -403,6 +403,7 @@ def train_speaker_plda(
     loso_dir=None,
     output_dir=None,
     embeddings_dir=None,
+    embeddings_split="dev",
     plda_dim=None,
     plda_iters=10
 ):
@@ -414,6 +415,7 @@ def train_speaker_plda(
         loso_dir: Base LOSO directory
         output_dir: Output directory for models
         embeddings_dir: Directory with pre-extracted embeddings
+        embeddings_split: Split name under each speaker (e.g., dev, other)
         use_lda: Whether to use LDA dimensionality reduction
         lda_dim: LDA output dimension
     
@@ -441,11 +443,13 @@ def train_speaker_plda(
     if embeddings_dir and os.path.exists(embeddings_dir):
         print("Loading pre-extracted embeddings...")
         speaker_emb_dir = os.path.join(embeddings_dir, f"speaker_{speaker_id}")
-        train_emb_dir = os.path.join(speaker_emb_dir, "dev")
-        train_emb_csv = os.path.join(speaker_emb_dir, "dev_embeddings.csv")
+        train_emb_dir = os.path.join(speaker_emb_dir, embeddings_split)
+        train_emb_csv = os.path.join(speaker_emb_dir, f"{embeddings_split}_embeddings.csv")
         
         if not os.path.exists(train_emb_csv):
-            raise FileNotFoundError(f"Training embeddings CSV not found: {train_emb_csv}")
+            raise FileNotFoundError(
+                f"Training embeddings CSV not found for split '{embeddings_split}': {train_emb_csv}"
+            )
         
         X_train, y_train, train_ids = load_embeddings_from_npy(
             train_emb_dir,
@@ -517,6 +521,7 @@ def train_all_speakers_plda(
     loso_dir=None,
     output_dir=None,
     embeddings_dir=None,
+    embeddings_split="dev",
     plda_dim=None,
     plda_iters=10
 ):
@@ -527,6 +532,7 @@ def train_all_speakers_plda(
         loso_dir: Base LOSO directory
         output_dir: Output directory for models
         embeddings_dir: Directory with pre-extracted embeddings
+        embeddings_split: Split name under each speaker (e.g., dev, other)
         use_lda: Whether to use LDA dimensionality reduction
         lda_dim: LDA output dimension
     
@@ -554,6 +560,7 @@ def train_all_speakers_plda(
                 loso_dir=loso_dir,
                 output_dir=output_dir,
                 embeddings_dir=embeddings_dir,
+                embeddings_split=embeddings_split,
                 plda_dim=plda_dim,
                 plda_iters=plda_iters
             )

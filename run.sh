@@ -214,14 +214,14 @@ case "$COMMAND" in
 
     train-plda-other)
         print_header "Training PLDA Models (Other Embeddings)"
-        python train_plda_models.py --all --embeddings-dir data/embeddings_other
+        python train_plda_models.py --all --embeddings-dir data/embeddings --embeddings-split other
         print_success "PLDA training complete (other embeddings)!"
         ;;
 
     train-plda-other-speaker)
         SPEAKER="${2:-03}"
         print_header "Training PLDA for Speaker $SPEAKER (Other Embeddings)"
-        python train_plda_models.py --speaker "$SPEAKER" --embeddings-dir data/embeddings_other
+        python train_plda_models.py --speaker "$SPEAKER" --embeddings-dir data/embeddings --embeddings-split other
         print_success "PLDA training complete for speaker $SPEAKER (other embeddings)!"
         ;;
 

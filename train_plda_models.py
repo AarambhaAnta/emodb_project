@@ -131,6 +131,12 @@ Examples:
         default=None,
         help='Directory containing pre-extracted embeddings'
     )
+    parser.add_argument(
+        '--embeddings-split',
+        type=str,
+        default='dev',
+        help='Embeddings split name under each speaker (e.g., dev, other)'
+    )
     
     args = parser.parse_args()
     
@@ -154,6 +160,7 @@ Examples:
     print(f"  LOSO Directory: {loso_dir}")
     print(f"  Output Directory: {output_dir}")
     print(f"  Embeddings Directory: {embeddings_dir}")
+    print(f"  Embeddings Split: {args.embeddings_split}")
     print(f"  Use LDA: {use_lda}")
     print(f"  LDA Dimension: {lda_dim}")
     print(f"  PLDA Dimension: {plda_dim}")
@@ -190,6 +197,7 @@ Examples:
                 loso_dir=str(loso_dir),
                 output_dir=str(output_dir),
                 embeddings_dir=embeddings_dir,
+                embeddings_split=args.embeddings_split,
                 plda_dim=plda_dim,
                 plda_iters=plda_iters
             )
@@ -219,6 +227,7 @@ Examples:
                 loso_dir=str(loso_dir),
                 output_dir=str(output_dir),
                 embeddings_dir=embeddings_dir,
+                embeddings_split=args.embeddings_split,
                 plda_dim=plda_dim,
                 plda_iters=plda_iters
             )
