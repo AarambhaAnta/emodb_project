@@ -83,3 +83,5 @@ checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
 
 # Save folder (will be set dynamically in training script)
 save_folder: ./output/models/temp
+
+label_encoder: '/Users/adityakumar/Developer/Projects/emodb_project/config/label_encoder.txt'

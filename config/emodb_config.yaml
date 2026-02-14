@@ -55,3 +55,6 @@ LOSO:
   OUTPUT_DIR: 'data/processed/loso'
   TRAIN_RATIO: 0.8  # 80% train, 20% validation
   RANDOM_STATE: 42  # For reproducibility
+
+
+label_encoder: '/Users/adityakumar/Developer/Projects/emodb_project/config/label_encoder.txt'
