@@ -180,7 +180,7 @@ class EmotionBrain(sb.core.Brain):
             print("WARNING: error_metrics is None at end of validation stage!")
 
 
-def prepare_datasets(hparams, train_csv_path, val_csv_path, tmp_dir):
+def prepare_datasets(hparams, train_csv_path, val_csv_path, tmp_dir, label_encoder_path=None):
     """
     Prepare train and validation datasets.
     
@@ -230,14 +230,16 @@ def prepare_datasets(hparams, train_csv_path, val_csv_path, tmp_dir):
     
     # Load or create label encoder
     os.makedirs(tmp_dir, exist_ok=True)
-    label_encoder.load_or_create(
-        path=os.path.join(tmp_dir, "label_encoder.txt"),
-        from_didatasets=[train_data],
-        output_key="label",
-    )
-    
-    # Set expected number of emotion categories (7: anger, boredom, disgust, fear, happiness, sadness, neutral)
-    label_encoder.expect_len(7)
+    if label_encoder_path:
+        label_encoder.load(label_encoder_path)
+    else:
+        label_encoder.load_or_create(
+            path=os.path.join(tmp_dir, "label_encoder.txt"),
+            from_didatasets=[train_data],
+            output_key="label",
+        )
+        # Set expected number of emotion categories (7: anger, boredom, disgust, fear, happiness, sadness, neutral)
+        label_encoder.expect_len(7)
     
     # Set output keys
     sb.dataio.dataset.set_output_keys(datasets, ["id", "mfcc", "label_encoded"])
@@ -245,7 +247,7 @@ def prepare_datasets(hparams, train_csv_path, val_csv_path, tmp_dir):
     return train_data, valid_data
 
 
-def prepare_train_dataset(hparams, train_csv_path, tmp_dir):
+def prepare_train_dataset(hparams, train_csv_path, tmp_dir, label_encoder_path='config/label_encoder.txt'):
     """
     Prepare a training dataset only (no validation split).
 
@@ -279,12 +281,15 @@ def prepare_train_dataset(hparams, train_csv_path, tmp_dir):
 
     sb.dataio.dataset.add_dynamic_item([train_data], label_pipeline)
 
-    label_encoder.load_or_create(
-        path=os.path.join(tmp_dir, "label_encoder.txt"),
-        from_didatasets=[train_data],
-        output_key="label",
-    )
-    label_encoder.expect_len(7)
+    if label_encoder_path:
+        label_encoder.load(label_encoder_path)
+    else:
+        label_encoder.load_or_create(
+            path=os.path.join(tmp_dir, "label_encoder.txt"),
+            from_didatasets=[train_data],
+            output_key="label",
+        )
+        label_encoder.expect_len(7)
 
     sb.dataio.dataset.set_output_keys([train_data], ["id", "mfcc", "label_encoded"])
 
