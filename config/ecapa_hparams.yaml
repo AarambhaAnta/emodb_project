@@ -5,7 +5,7 @@ seed: 1986
 __set_seed: !apply:torch.manual_seed [!ref <seed>]
 
 # Data parameters
-batch_size: 16
+batch_size: 32
 num_workers: 0  # Set to 0 for Python 3.13 compatibility
 
 # Feature parameters
@@ -17,14 +17,14 @@ embedding_dim: 192
 num_classes: 7
 
 # Training parameters
-number_of_epochs: 5
+number_of_epochs: 10
 lr: 0.001
-weight_decay: 0.0005
+weight_decay: 0.0002
 # dropout: 0.3
 
 # LR scheduler (CyclicLR matching reference recipe)
 base_lr: 0.00000001
-step_size: 65  # ~3 epochs per half-cycle at ~22 batches/epoch; full cycle = ~6 epochs
+step_size: 200  # ~4-5x batches/epoch; full cycle = 2*step_size steps
 
 lr_annealing: !new:speechbrain.nnet.schedulers.CyclicLRScheduler
     base_lr: !ref <base_lr>
@@ -38,6 +38,13 @@ dataloader_options:
     num_workers: !ref <num_workers>
     shuffle: True
     drop_last: True
+
+# Validation loader options (no shuffle, no drop_last to evaluate all samples)
+valid_dataloader_options:
+    batch_size: !ref <batch_size>
+    num_workers: !ref <num_workers>
+    shuffle: False
+    drop_last: False
 
 # Epoch counter
 epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
