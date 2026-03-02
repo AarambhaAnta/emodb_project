@@ -19,7 +19,18 @@ num_classes: 7
 # Training parameters
 number_of_epochs: 10
 lr: 0.001
-weight_decay: 0.0001
+weight_decay: 0.0002
+# dropout: 0.3
+
+# LR scheduler (CyclicLR matching reference recipe)
+base_lr: 0.00000001
+step_size: 200  # ~4-5x batches/epoch; full cycle = 2*step_size steps
+
+lr_annealing: !new:speechbrain.nnet.schedulers.CyclicLRScheduler
+    base_lr: !ref <base_lr>
+    # current_lr: !ref <base_lr>
+    max_lr: !ref <lr>
+    step_size: !ref <step_size>
 
 # Data loader options
 dataloader_options:
@@ -32,9 +43,11 @@ dataloader_options:
 epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
     limit: !ref <number_of_epochs>
 
-# Mean and variance normalization
+# Mean and variance normalization (sentence = per-utterance; matches previous recipe)
+# global can cause train/val mismatch and stagnant val error on small datasets
 mean_var_norm: !new:speechbrain.processing.features.InputNormalization
-    norm_type: global
+    norm_type: sentence
+    std_norm: False
 
 # ECAPA-TDNN model
 embedding_model: !new:speechbrain.lobes.models.ECAPA_TDNN.ECAPA_TDNN
@@ -61,7 +74,7 @@ opt_class: !name:torch.optim.Adam
     lr: !ref <lr>
     weight_decay: !ref <weight_decay>
 
-# Loss function
+# Loss function (moderate scale for better speaker-independent generalization)
 compute_cost: !new:speechbrain.nnet.losses.LogSoftmaxWrapper
     loss_fn: !new:speechbrain.nnet.losses.AdditiveAngularMargin
         margin: 0.2
