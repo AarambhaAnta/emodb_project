@@ -227,3 +227,6 @@ scripts/
 
 # Models 
 output/models/*/
+
+# Old codes
+previous/

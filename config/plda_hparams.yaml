@@ -2,7 +2,7 @@
 # PLDA Training Hyperparameters
 
 # SpeechBrain PLDA settings
-plda_dim: null  # PLDA dimension (null = embedding_dim)
+plda_dim: 6  # n_classes - 1; higher values add noise for 7-class problem
 
 # Input settings
 embedding_dim: 192  # ECAPA-TDNN embedding dimension
