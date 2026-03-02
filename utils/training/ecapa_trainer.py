@@ -164,7 +164,7 @@ def train_speaker_model(speaker_id, loso_dir, output_dir, hparams, run_opts,
         train_set=train_data, 
         valid_set=val_data,
         train_loader_kwargs=hparams["dataloader_options"],
-        valid_loader_kwargs=hparams["dataloader_options"]
+        valid_loader_kwargs=hparams["valid_dataloader_options"]
     )
 
     torch.save({

@@ -250,10 +250,20 @@ def train_plda_stage(config, logger, speaker=None):
     logger.info("=" * 70)
 
     from utils.training.plda_trainer import train_speaker_plda, train_all_speakers_plda
+    import yaml
 
     loso_dir = str(Path(config['BASE_DIR']) / config['PATHS']['LOSO'])
     output_dir = str(Path(config['BASE_DIR']) / 'output' / 'models' / 'plda')
     embeddings_dir = str(Path(config['BASE_DIR']) / config['PATHS']['EMBEDDINGS'])
+
+    # Read PLDA dimensionality from plda_hparams.yaml
+    plda_hparams_path = Path(config['BASE_DIR']) / 'config' / 'plda_hparams.yaml'
+    n_components = None
+    if plda_hparams_path.exists():
+        with open(plda_hparams_path) as f:
+            plda_hparams = yaml.safe_load(f)
+        n_components = plda_hparams.get('plda_dim', None)
+    logger.info(f"PLDA n_components: {n_components}")
 
     if not os.path.exists(embeddings_dir) or not os.listdir(embeddings_dir):
         logger.error("No embeddings found. Run --embeddings (Stage 5) first.")
@@ -265,6 +275,7 @@ def train_plda_stage(config, logger, speaker=None):
             loso_dir=loso_dir,
             output_dir=output_dir,
             embeddings_dir=embeddings_dir,
+            n_components=n_components,
         )
         logger.info(f"PLDA model saved to: {results['model_path']}")
     else:
@@ -272,6 +283,7 @@ def train_plda_stage(config, logger, speaker=None):
             loso_dir=loso_dir,
             output_dir=output_dir,
             embeddings_dir=embeddings_dir,
+            n_components=n_components,
         )
         successful = [s for s, r in all_results.items() if 'model_path' in r]
         logger.info(f"PLDA trained for {len(successful)}/{len(all_results)} speakers")
