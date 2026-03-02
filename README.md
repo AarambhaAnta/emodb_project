@@ -19,7 +19,7 @@ This project implements a comprehensive emotion recognition system that:
 🔧 **Config-Based**: All parameters centralized in YAML  
 📦 **Pip Installable**: `pip install -e .` for easy setup  
 🎯 **LOSO Validation**: Speaker-independent evaluation  
-🤖 **Multiple Models**: ECAPA-TDNN and LDA support  
+🤖 **Multiple Models**: ECAPA-TDNN support  
 📊 **Comprehensive Logging**: Track all pipeline stages  
 🚀 **Multiple Entry Points**: CLI, Python API, and shell scripts  
 
@@ -278,6 +278,21 @@ and save to `data/testing/speaker_{id}/test`. The summary CSV is stored at
 ```bash
 ./run.sh avg-test-embeddings
 ./run.sh avg-test-embeddings-speaker 03
+```
+
+### PLDA Scoring
+
+Score the averaged test embeddings against the emotion centroids using the
+per-speaker PLDA model. Results are written to
+`output/results/speaker_{id}` including:
+
+- `plda_scores.csv` (predictions + per-emotion scores)
+- `plda_metrics.json` (accuracy, F1, classification report, confusion matrix)
+- `confusion_matrix.png` and `f1_per_class.png`
+
+```bash
+./run.sh score-plda
+./run.sh score-plda-speaker 03
 ```
 
 ### Training Workflows

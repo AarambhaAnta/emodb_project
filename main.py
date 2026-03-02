@@ -2,73 +2,56 @@
 """
 EmoDb Emotion Recognition Pipeline - Main Entry Point
 
-This script orchestrates the complete emotion recognition pipeline:
-1. Metadata extraction from audio files
-2. Audio segmentation
-3. MFCC feature extraction
-4. LOSO (Leave-One-Speaker-Out) split creation
-5. Train/validation split creation (80/20)
-6. Model training with ECAPA-TDNN
-7. Model evaluation
+7-stage pipeline:
+  1. --segment    : Segment audio files and create CSV
+  2. --mfcc       : Extract MFCC features (396x40)
+  3. --loso       : Create LOSO splits + 80/20 train/val splits
+  4. --train      : Train ECAPA-TDNN model per speaker
+  5. --embeddings : Extract embeddings from trained models
+  6. --train-plda : Train PLDA model per speaker
+  7. --test-plda  : Test PLDA model per speaker
 
 Usage:
-    # Run complete pipeline
     python main.py --all
-    
-    # Run specific stages
-    python main.py --metadata --segment --mfcc
-    python main.py --loso --splits
-    python main.py --train --speaker 03
-    
-    # Run with custom config
+    python main.py --segment
+    python main.py --mfcc
+    python main.py --loso
+    python main.py --train [--speaker 03]
+    python main.py --embeddings [--speaker 03]
+    python main.py --train-plda [--speaker 03]
+    python main.py --test-plda [--speaker 03]
     python main.py --all --config path/to/config.yaml
 """
 
 import os
 import sys
+import json
 import argparse
 import logging
 from pathlib import Path
 from datetime import datetime
 
-# Import utils
+import torch
+
 from utils import get_config
-from utils.audio_processing import (
-    extract_metadata_from_folder,
-    extract_segment_from_folder,
-    create_csv
-)
-from utils.features_extraction import (
-    extract_mfcc_from_dataset,
-    create_loso_splits,
-    create_train_val_splits
-)
+from utils.audio_processing import segment_audio
+from utils.features_extraction import extract_mfcc, create_splits
 from utils.training import train_all_speakers, train_speaker_model
 
 
 def setup_logging(log_dir=None):
-    """
-    Set up logging configuration.
-    
-    Args:
-        log_dir: Directory to save log files. If None, uses config default.
-    
-    Returns:
-        Logger instance
-    """
+    """Set up logging to file and stdout."""
     if log_dir is None:
         config = get_config()
         log_dir = Path(config['BASE_DIR']) / config['PATHS']['LOGS']
     else:
         log_dir = Path(log_dir)
-    
+
     log_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Create log file with timestamp
+
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     log_file = log_dir / f'pipeline_{timestamp}.log'
-    
-    # Configure logging
+
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
@@ -77,183 +60,104 @@ def setup_logging(log_dir=None):
             logging.StreamHandler(sys.stdout)
         ]
     )
-    
+
     logger = logging.getLogger(__name__)
     logger.info(f"Logging to: {log_file}")
-    
     return logger
 
 
-def extract_metadata_stage(config, logger):
-    """Extract metadata from audio files."""
+# ---------------------------------------------------------------------------
+# Stage functions
+# ---------------------------------------------------------------------------
+
+def segment_stage(config, logger):
+    """Stage 1: Segment audio files and create CSV."""
     logger.info("=" * 70)
-    logger.info("STAGE 1: METADATA EXTRACTION")
+    logger.info("STAGE 1: AUDIO SEGMENTATION")
     logger.info("=" * 70)
-    
-    raw_audio_dir = os.path.join(config['BASE_DIR'], config['PATHS']['RAW_DATA'])
-    csv_dir = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'])
-    output_csv = os.path.join(csv_dir, 'metadata.csv')
-    
-    logger.info(f"Input directory: {raw_audio_dir}")
-    logger.info(f"Output CSV: {output_csv}")
-    
-    # Extract metadata from all audio files
-    metadata = extract_metadata_from_folder(str(raw_audio_dir))
-    logger.info(f"Extracted metadata for {len(metadata)} files")
-    
-    # Save to CSV - FIX: Pass directory and filename separately
-    create_csv(metadata, csv_dir, 'metadata')
-    
-    logger.info(f"Saved metadata to: {output_csv}")
-    logger.info("")
-    
-    return output_csv
+
+    raw_dir = os.path.join(config['BASE_DIR'], config['PATHS']['RAW_DATA'])
+    output_dir = os.path.join(config['BASE_DIR'], config['PATHS']['SEGMENT'])
+    csv_path = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'], 'segments.csv')
+
+    logger.info(f"Input directory: {raw_dir}")
+    logger.info(f"Segment directory: {output_dir}")
+    logger.info(f"Output CSV: {csv_path}")
+
+    df = segment_audio(raw_dir=raw_dir, output_dir=output_dir, csv_path=csv_path)
+    logger.info(f"Created {len(df)} segments")
+    logger.info("Stage 1 complete!\n")
+    return csv_path
 
 
-def segment_audio_stage(config, logger):
-    """Segment audio files."""
+def mfcc_stage(config, logger):
+    """Stage 2: Extract MFCC features (396x40)."""
     logger.info("=" * 70)
-    logger.info("STAGE 2: AUDIO SEGMENTATION")
+    logger.info("STAGE 2: MFCC FEATURE EXTRACTION")
     logger.info("=" * 70)
-    
-    input_csv = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'], 'metadata.csv')
-    segment_dir = os.path.join(config['BASE_DIR'], config['PATHS']['SEGMENT'])
-    output_csv = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'], 'segmented_metadata.csv')
-    
+
+    input_csv = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'], 'segments.csv')
+    output_dir = os.path.join(config['BASE_DIR'], config['MFCC']['OUTPUT_DIR'])
+    csv_path = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'], 'mfcc_features.csv')
+
     logger.info(f"Input CSV: {input_csv}")
-    logger.info(f"Segment directory: {segment_dir}")
-    logger.info(f"Output CSV: {output_csv}")
-    
-    # Get sample rate from config
-    sr = config.get('AUDIO', {}).get('sample_rate', 16000)
-    logger.info(f"Sample rate: {sr}")
-    
-    # Segment audio
-    segmented_metadata = extract_segment_from_folder(
-        output_dir=segment_dir,
-        input_csv=input_csv,
-        sr=sr
-    )
-    
-    logger.info(f"Created {len(segmented_metadata)} segments")
-    
-    # Save to CSV
-    csv_dir = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'])
-    create_csv(segmented_metadata, csv_dir, 'segmented_metadata')
-    
-    logger.info(f"Segmented metadata saved to: {output_csv}")
+    logger.info(f"Features directory: {output_dir}")
+    logger.info(f"Output CSV: {csv_path}")
+
+    df = extract_mfcc(input_csv=input_csv, output_dir=output_dir, csv_path=csv_path)
+    logger.info(f"Extracted {len(df)} MFCC features")
     logger.info("Stage 2 complete!\n")
-    
-    return segmented_metadata
+    return csv_path
 
 
-def extract_mfcc_stage(config, logger):
-    """Extract MFCC features."""
+def loso_stage(config, logger):
+    """Stage 3: Create LOSO + 80/20 train/val/test splits (CSV only, no file copying)."""
     logger.info("=" * 70)
-    logger.info("STAGE 3: MFCC FEATURE EXTRACTION")
+    logger.info("STAGE 3: LOSO + TRAIN/VAL SPLITS")
     logger.info("=" * 70)
-    
-    input_csv = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'], 'segmented_metadata.csv')
-    features_dir = os.path.join(config['BASE_DIR'], config['MFCC']['OUTPUT_DIR'])
-    
-    logger.info(f"Input CSV: {input_csv}")
-    logger.info(f"Features directory: {features_dir}")
-    
-    # MFCC parameters
-    mfcc_params = config.get('MFCC', {})
-    logger.info(f"MFCC parameters: {mfcc_params}")
-    
-    # Extract MFCC features
-    mfcc_df = extract_mfcc_from_dataset(
-        input_csv=input_csv,
-        output_dir=features_dir,
-        config=config
+
+    mfcc_csv = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'], 'mfcc_features.csv')
+    output_dir = os.path.join(config['BASE_DIR'], config['PATHS']['LOSO'])
+
+    logger.info(f"MFCC CSV: {mfcc_csv}")
+    logger.info(f"LOSO directory: {output_dir}")
+
+    splits_info = create_splits(
+        mfcc_csv=mfcc_csv,
+        output_dir=output_dir,
     )
-    
-    logger.info(f"Successfully extracted {len(mfcc_df)} MFCC features")
-    
+    logger.info(f"Created splits for {len(splits_info)} speakers: {sorted(splits_info.keys())}")
     logger.info("Stage 3 complete!\n")
-    
-    return mfcc_df
-
-
-def create_loso_stage(config, logger):
-    """Create LOSO (Leave-One-Speaker-Out) splits."""
-    logger.info("=" * 70)
-    logger.info("STAGE 4: LOSO SPLIT CREATION")
-    logger.info("=" * 70)
-    
-    input_csv = os.path.join(config['BASE_DIR'], config['PATHS']['CSV'], 'emodb_mfcc_features.csv')
-    loso_dir = os.path.join(config['BASE_DIR'], config['PATHS']['LOSO'])
-    
-    logger.info(f"Input CSV: {input_csv}")
-    logger.info(f"LOSO directory: {loso_dir}")
-    
-    # Create LOSO splits
-    speakers = create_loso_splits(
-        input_csv=str(input_csv),
-        output_dir=str(loso_dir),
-        config=config
-    )
-    
-    logger.info(f"Created LOSO splits for {len(speakers)} speakers: {sorted(speakers)}")
-    logger.info("Stage 4 complete!\n")
-    
-    return speakers
-
-
-def create_train_val_splits_stage(config, logger):
-    """Create train/validation splits (80/20)."""
-    logger.info("=" * 70)
-    logger.info("STAGE 5: TRAIN/VALIDATION SPLIT CREATION")
-    logger.info("=" * 70)
-    
-    loso_dir = os.path.join(config['BASE_DIR'], config['PATHS']['LOSO'])
-    
-    logger.info(f"LOSO directory: {loso_dir}")
-    
-    # Get train ratio from config
-    train_ratio = config.get('LOSO', {}).get('train_ratio', 0.8)
-    logger.info(f"Train ratio: {train_ratio}")
-    
-    # Create train/val splits for all speakers at once
-    splits_info = create_train_val_splits(
-        loso_dir=loso_dir,
-        config=config
-    )
-    
-    logger.info(f"Created train/val splits for {len(splits_info)} speakers")
-    
-    logger.info("Stage 5 complete!\n")
-    
     return list(splits_info.keys())
 
 
-def train_models_stage(config, logger, speaker=None):
-    """Train ECAPA-TDNN models."""
+def train_stage(config, logger, speaker=None):
+    """Stage 4: Train ECAPA-TDNN model per speaker."""
     logger.info("=" * 70)
-    logger.info("STAGE 6: MODEL TRAINING")
+    logger.info("STAGE 4: ECAPA-TDNN TRAINING")
     logger.info("=" * 70)
-    
+
     loso_dir = Path(config['BASE_DIR']) / config['PATHS']['LOSO']
     output_dir = Path(config['BASE_DIR']) / config['PATHS']['MODELS']
     hparams_file = Path(config['BASE_DIR']) / 'config' / 'ecapa_hparams.yaml'
-    
+
     logger.info(f"LOSO directory: {loso_dir}")
     logger.info(f"Output directory: {output_dir}")
-    logger.info(f"Hyperparameters: {hparams_file}")
-    
-    # Load hyperparameters
+
     from hyperpyyaml import load_hyperpyyaml
     with open(hparams_file) as f:
         hparams = load_hyperpyyaml(f)
-    
-    run_opts = {"device": "cpu"}  # Change to "cuda" if GPU available
-    
+
+    if torch.cuda.is_available():
+        run_opts = {"device": "cuda"}
+    elif torch.backends.mps.is_available():
+        run_opts = {"device": "mps"}
+    else:
+        run_opts = {"device": "cpu"}
+    logger.info(f"Device: {run_opts['device']}")
+
     if speaker:
-        # Train single speaker
         logger.info(f"Training single speaker: {speaker}")
-        
         best_error = train_speaker_model(
             speaker_id=speaker,
             loso_dir=str(loso_dir),
@@ -261,189 +165,281 @@ def train_models_stage(config, logger, speaker=None):
             hparams=hparams,
             run_opts=run_opts
         )
-        
-        logger.info(f"Training complete for speaker {speaker}")
-        logger.info(f"Best validation error: {best_error:.4f}")
-        
-        # Save single speaker results to JSON
-        import json
-        results = {
-            f"speaker_{speaker}": {
-                "status": "success",
-                "best_error": float(best_error),
-                "model_path": str(output_dir / f"speaker_{speaker}" / "CKPT+*")
-            }
-        }
+        results = {f"speaker_{speaker}": {"status": "success", "best_error": float(best_error)}}
         results_file = output_dir / f'training_results_speaker_{speaker}.json'
-        with open(results_file, 'w') as f:
-            json.dump(results, f, indent=2)
-        
-        logger.info(f"Results saved to: {results_file}")
-        logger.info(f"Model saved to: {output_dir / f'speaker_{speaker}'}")
-        
     else:
-        # Train all speakers
         logger.info("Training all speakers...")
-        
         results = train_all_speakers(
             loso_dir=str(loso_dir),
             output_dir=str(output_dir),
             hparams_file=hparams,
             run_opts=run_opts
         )
-        
-        # Save results
-        import json
-        results_file = output_dir / 'training_results.json'
-        with open(results_file, 'w') as f:
-            json.dump(results, f, indent=2)
-        
-        # Log summary
         successful = [s for s, r in results.items() if r['status'] == 'success']
         failed = [s for s, r in results.items() if r['status'] == 'failed']
-        
-        logger.info(f"Successful: {len(successful)}/{len(results)}")
-        logger.info(f"Failed: {len(failed)}/{len(results)}")
-        
+        logger.info(f"Successful: {len(successful)}/{len(results)}, Failed: {len(failed)}")
         if successful:
             avg_error = sum(results[s]['best_error'] for s in successful) / len(successful)
             logger.info(f"Average validation error: {avg_error:.4f}")
-        
-        logger.info(f"Results saved to: {results_file}")
-    
+        results_file = output_dir / 'training_results.json'
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with open(results_file, 'w') as f:
+        json.dump(results, f, indent=2)
+    logger.info(f"Results saved to: {results_file}")
+    logger.info("Stage 4 complete!\n")
+
+
+def embeddings_stage(config, logger, speaker=None):
+    """Stage 5: Extract embeddings from trained ECAPA-TDNN models."""
+    logger.info("=" * 70)
+    logger.info("STAGE 5: EMBEDDING EXTRACTION")
+    logger.info("=" * 70)
+
+    from utils.features_extraction.extract_embeddings import extract_embeddings_for_speaker
+
+    loso_dir = str(Path(config['BASE_DIR']) / config['PATHS']['LOSO'])
+    model_dir = str(Path(config['BASE_DIR']) / config['PATHS']['MODELS'])
+    output_dir = str(Path(config['BASE_DIR']) / config['PATHS']['EMBEDDINGS'])
+    hparams_file = str(Path(config['BASE_DIR']) / 'config' / 'ecapa_hparams.yaml')
+
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif torch.backends.mps.is_available():
+        device = "mps"
+    else:
+        device = "cpu"
+    logger.info(f"Device: {device}")
+
+    if speaker:
+        speakers = [speaker]
+    else:
+        speakers = sorted([
+            d.replace('speaker_', '')
+            for d in os.listdir(loso_dir)
+            if d.startswith('speaker_')
+        ])
+
+    logger.info(f"Extracting embeddings for {len(speakers)} speaker(s)")
+
+    for spk in speakers:
+        model_path = Path(model_dir) / f"speaker_{spk}" / "model.pt"
+        if not model_path.exists():
+            logger.warning(f"No trained model for speaker {spk}, skipping.")
+            continue
+        try:
+            extract_embeddings_for_speaker(
+                speaker_id=spk,
+                loso_dir=loso_dir,
+                model_dir=model_dir,
+                output_dir=output_dir,
+                hparams_file=hparams_file,
+                device=device
+            )
+            logger.info(f"Embeddings extracted for speaker {spk}")
+        except Exception as e:
+            logger.error(f"Failed embeddings for speaker {spk}: {e}")
+
+    logger.info("Stage 5 complete!\n")
+
+
+def train_plda_stage(config, logger, speaker=None):
+    """Stage 6: Train PLDA model per speaker."""
+    logger.info("=" * 70)
+    logger.info("STAGE 6: PLDA TRAINING")
+    logger.info("=" * 70)
+
+    from utils.training.plda_trainer import train_speaker_plda, train_all_speakers_plda
+
+    loso_dir = str(Path(config['BASE_DIR']) / config['PATHS']['LOSO'])
+    output_dir = str(Path(config['BASE_DIR']) / 'output' / 'models' / 'plda')
+    embeddings_dir = str(Path(config['BASE_DIR']) / config['PATHS']['EMBEDDINGS'])
+
+    if not os.path.exists(embeddings_dir) or not os.listdir(embeddings_dir):
+        logger.error("No embeddings found. Run --embeddings (Stage 5) first.")
+        return
+
+    if speaker:
+        results = train_speaker_plda(
+            speaker_id=speaker,
+            loso_dir=loso_dir,
+            output_dir=output_dir,
+            embeddings_dir=embeddings_dir,
+        )
+        logger.info(f"PLDA model saved to: {results['model_path']}")
+    else:
+        all_results = train_all_speakers_plda(
+            loso_dir=loso_dir,
+            output_dir=output_dir,
+            embeddings_dir=embeddings_dir,
+        )
+        successful = [s for s, r in all_results.items() if 'model_path' in r]
+        logger.info(f"PLDA trained for {len(successful)}/{len(all_results)} speakers")
+
     logger.info("Stage 6 complete!\n")
 
+
+def test_plda_stage(config, logger, speaker=None):
+    """Stage 7: Test PLDA model per speaker."""
+    logger.info("=" * 70)
+    logger.info("STAGE 7: PLDA TESTING")
+    logger.info("=" * 70)
+
+    from utils.testing.plda_scoring import score_speaker_plda, score_all_speakers_plda
+
+    base_dir = config['BASE_DIR']
+    embeddings_dir = str(Path(base_dir) / config['PATHS']['EMBEDDINGS'])
+    results_dir = str(Path(base_dir) / config['PATHS'].get('RESULTS', 'output/results'))
+
+    if speaker:
+        try:
+            metrics = score_speaker_plda(
+                speaker_id=speaker, base_dir=base_dir, results_dir=results_dir
+            )
+            acc = metrics.get('accuracy')
+            if acc is not None:
+                logger.info(f"Speaker {speaker} accuracy: {acc:.4f} ({acc*100:.2f}%)")
+        except Exception as e:
+            logger.error(f"PLDA scoring failed for speaker {speaker}: {e}")
+    else:
+        if not Path(embeddings_dir).exists():
+            logger.error("No embeddings found. Run --embeddings (Stage 5) first.")
+            return
+        all_metrics = score_all_speakers_plda(base_dir=base_dir, results_dir=results_dir)
+        accs = [r['accuracy'] for r in all_metrics.values()
+                if isinstance(r, dict) and r.get('accuracy') is not None]
+        if accs:
+            logger.info(f"Mean accuracy across speakers: {sum(accs)/len(accs):.4f}")
+        logger.info(f"Results saved to: {results_dir}")
+
+    logger.info("Stage 7 complete!\n")
+
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
 
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="EmoDb Emotion Recognition Pipeline",
+        description="EmoDb Emotion Recognition Pipeline (7 stages)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+Pipeline stages:
+  1  --segment     Segment audio files and create CSV
+  2  --mfcc        Extract MFCC features (396x40)
+  3  --loso        Create LOSO + 80/20 train/val splits
+  4  --train       Train ECAPA-TDNN model per speaker
+  5  --embeddings  Extract embeddings from trained models
+  6  --train-plda  Train PLDA model per speaker
+  7  --test-plda   Test PLDA model per speaker
+
 Examples:
-  # Run complete pipeline
-  python main.py --all
-  
-  # Run preprocessing only
-  python main.py --metadata --segment --mfcc
-  
-  # Run data preparation
-  python main.py --loso --splits
-  
-  # Train all models
-  python main.py --train
-  
-  # Train specific speaker
-  python main.py --train --speaker 03
-  
-  # Use custom config
-  python main.py --all --config config/custom_config.yaml
+  python main.py --all                    # Run all 7 stages
+  python main.py --segment --mfcc --loso  # Stages 1-3
+  python main.py --train --speaker 03     # Stage 4 for one speaker
+  python main.py --embeddings --speaker 03
+  python main.py --train-plda --speaker 03
+  python main.py --test-plda --speaker 03
         """
     )
-    
-    # Stage selection
+
     parser.add_argument('--all', action='store_true',
-                       help='Run complete pipeline (all stages)')
-    parser.add_argument('--metadata', action='store_true',
-                       help='Stage 1: Extract metadata')
+                        help='Run complete pipeline (all 7 stages)')
     parser.add_argument('--segment', action='store_true',
-                       help='Stage 2: Segment audio files')
+                        help='Stage 1: Segment audio files and create CSV')
     parser.add_argument('--mfcc', action='store_true',
-                       help='Stage 3: Extract MFCC features')
+                        help='Stage 2: Extract MFCC features (396x40)')
     parser.add_argument('--loso', action='store_true',
-                       help='Stage 4: Create LOSO splits')
-    parser.add_argument('--splits', action='store_true',
-                       help='Stage 5: Create train/val splits')
+                        help='Stage 3: Create LOSO + train/val splits')
     parser.add_argument('--train', action='store_true',
-                       help='Stage 6: Train models')
-    
-    # Options
+                        help='Stage 4: Train ECAPA-TDNN models')
+    parser.add_argument('--embeddings', action='store_true',
+                        help='Stage 5: Extract embeddings from trained models')
+    parser.add_argument('--train-plda', action='store_true',
+                        help='Stage 6: Train PLDA models')
+    parser.add_argument('--test-plda', action='store_true',
+                        help='Stage 7: Test PLDA models')
+
     parser.add_argument('--config', type=str, default=None,
-                       help='Path to configuration file')
+                        help='Path to configuration file')
     parser.add_argument('--speaker', type=str, default=None,
-                       help='Train specific speaker only (e.g., "03")')
+                        help='Process specific speaker only (e.g., "03")')
     parser.add_argument('--log-dir', type=str, default=None,
-                       help='Directory for log files')
-    
+                        help='Directory for log files')
+
     return parser.parse_args()
 
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 def main():
     """Main pipeline orchestrator."""
     args = parse_args()
-    
-    # Load configuration
     config = get_config(args.config)
-    
-    # Setup logging
     logger = setup_logging(args.log_dir)
-    
-    logger.info("="*70)
+
+    logger.info("=" * 70)
     logger.info("EMODB EMOTION RECOGNITION PIPELINE")
-    logger.info("="*70)
+    logger.info("=" * 70)
     logger.info(f"Configuration: {args.config or 'default'}")
     logger.info(f"Project root: {config['BASE_DIR']}")
-    logger.info("="*70)
-    logger.info("")
-    
-    # Determine which stages to run
+    logger.info("=" * 70)
+
     run_all = args.all
-    run_metadata = args.metadata or run_all
-    run_segment = args.segment or run_all
-    run_mfcc = args.mfcc or run_all
-    run_loso = args.loso or run_all
-    run_splits = args.splits or run_all
-    run_train = args.train or run_all
-    
-    # Check if any stage is selected
-    if not any([run_metadata, run_segment, run_mfcc, run_loso, run_splits, run_train]):
-        logger.error("No stages selected! Use --all or specify individual stages.")
-        logger.error("Run 'python main.py --help' for usage information.")
+    stages = {
+        'segment':    args.segment    or run_all,
+        'mfcc':       args.mfcc       or run_all,
+        'loso':       args.loso       or run_all,
+        'train':      args.train      or run_all,
+        'embeddings': args.embeddings or run_all,
+        'train_plda': args.train_plda or run_all,
+        'test_plda':  args.test_plda  or run_all,
+    }
+
+    if not any(stages.values()):
+        logger.error("No stages selected. Use --all or specify individual stages.")
+        logger.error("Run 'python main.py --help' for usage.")
         sys.exit(1)
-    
-    # Track pipeline progress
+
+    active = [k for k, v in stages.items() if v]
+    logger.info(f"Stages to run: {active}\n")
+
     start_time = datetime.now()
-    
+
     try:
-        # Stage 1: Metadata extraction
-        if run_metadata:
-            extract_metadata_stage(config, logger)
-        
-        # Stage 2: Audio segmentation
-        if run_segment:
-            segment_audio_stage(config, logger)
-        
-        # Stage 3: MFCC feature extraction
-        if run_mfcc:
-            extract_mfcc_stage(config, logger)
-        
-        # Stage 4: LOSO split creation
-        if run_loso:
-            create_loso_stage(config, logger)
-        
-        # Stage 5: Train/val split creation
-        if run_splits:
-            create_train_val_splits_stage(config, logger)
-        
-        # Stage 6: Model training
-        if run_train:
-            train_models_stage(config, logger, speaker=args.speaker)
-        
-        # Pipeline complete
-        end_time = datetime.now()
-        duration = end_time - start_time
-        
-        logger.info("="*70)
+        if stages['segment']:
+            segment_stage(config, logger)
+
+        if stages['mfcc']:
+            mfcc_stage(config, logger)
+
+        if stages['loso']:
+            loso_stage(config, logger)
+
+        if stages['train']:
+            train_stage(config, logger, speaker=args.speaker)
+
+        if stages['embeddings']:
+            embeddings_stage(config, logger, speaker=args.speaker)
+
+        if stages['train_plda']:
+            train_plda_stage(config, logger, speaker=args.speaker)
+
+        if stages['test_plda']:
+            test_plda_stage(config, logger, speaker=args.speaker)
+
+        duration = datetime.now() - start_time
+        logger.info("=" * 70)
         logger.info("PIPELINE COMPLETE!")
-        logger.info("="*70)
         logger.info(f"Total duration: {duration}")
-        logger.info(f"End time: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info("="*70)
-        
+        logger.info("=" * 70)
+
     except Exception as e:
-        logger.error("="*70)
+        logger.error("=" * 70)
         logger.error("PIPELINE FAILED!")
-        logger.error("="*70)
         logger.error(f"Error: {str(e)}", exc_info=True)
         sys.exit(1)
 

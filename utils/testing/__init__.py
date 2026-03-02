@@ -1,39 +1,5 @@
 """Testing utilities for emotion recognition."""
 
-from .emotion_testing import (
-    EmotionCentroidTester,
-    average_emotion_embeddings_for_all,
-    average_emotion_embeddings_for_speaker,
-    average_test_embeddings_for_all,
-    average_test_embeddings_for_speaker,
-    build_test_firstpart_for_all,
-    build_test_firstpart_for_speaker,
-    build_test_noavg_for_all,
-    build_test_noavg_for_speaker,
-    test_speaker_emotions,
-    test_all_speakers,
-    test_speaker_emotions_firstpart,
-    test_all_speakers_firstpart
-)
-from .plda_scoring import (
-    score_all_speakers_plda,
-    score_speaker_plda
-)
+from .plda_scoring import score_speaker_plda, score_all_speakers_plda
 
-__all__ = [
-    "EmotionCentroidTester",
-    "average_emotion_embeddings_for_all",
-    "average_emotion_embeddings_for_speaker",
-    "average_test_embeddings_for_all",
-    "average_test_embeddings_for_speaker",
-    "build_test_firstpart_for_all",
-    "build_test_firstpart_for_speaker",
-    "build_test_noavg_for_all",
-    "build_test_noavg_for_speaker",
-    "score_all_speakers_plda",
-    "score_speaker_plda",
-    "test_speaker_emotions",
-    "test_all_speakers",
-    "test_speaker_emotions_firstpart",
-    "test_all_speakers_firstpart"
-]
+__all__ = ['score_speaker_plda', 'score_all_speakers_plda']

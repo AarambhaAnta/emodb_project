@@ -1,538 +1,129 @@
 #!/bin/bash
-# EmoDb Emotion Recognition Pipeline - Quick Run Script
-# 
-# This script provides convenient commands to run different parts of the pipeline.
-# Usage: ./run.sh [command]
+# EmoDb Emotion Recognition Pipeline - Run Script
+#
+# 7-stage pipeline:
+#   1. segment      - Segment audio files and create CSV
+#   2. mfcc         - Extract MFCC features (396x40)
+#   3. loso         - Create LOSO + 80/20 train/val splits
+#   4. train        - Train ECAPA-TDNN model per speaker
+#   5. embeddings   - Extract embeddings from trained models
+#   6. train-plda   - Train PLDA model per speaker
+#   7. test-plda    - Test PLDA model per speaker
+#
+# Usage: ./run.sh [command] [--speaker N]
 
-set -e  # Exit on error
+set -e
 
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Project root
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_ROOT"
 
-# Activate virtual environment if it exists
 if [ -d "venv" ]; then
-    echo -e "${GREEN}Activating virtual environment...${NC}"
     source venv/bin/activate
 fi
 
-# Function to print colored output
-print_header() {
-    echo -e "${BLUE}======================================================================${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}======================================================================${NC}"
-}
-
-print_success() {
-    echo -e "${GREEN}✓ $1${NC}"
-}
-
-print_error() {
-    echo -e "${RED}✗ $1${NC}"
-}
-
-print_warning() {
-    echo -e "${YELLOW}⚠ $1${NC}"
-}
-
-# Show usage
 usage() {
-    echo "EmoDb Emotion Recognition Pipeline - Quick Run Script"
+    echo "EmoDb Emotion Recognition Pipeline"
     echo ""
-    echo "Usage: ./run.sh [command]"
+    echo "Usage: ./run.sh <command> [--speaker N]"
     echo ""
-    echo "Commands:"
-    echo "  all              - Run complete pipeline (preprocessing + training)"
-    echo "  preprocess       - Run preprocessing only (metadata, segment, MFCC)"
-    echo "  prepare          - Prepare data (LOSO + train/val splits)"
-    echo "  train            - Train all ECAPA-TDNN models"
-    echo "  train-speaker N  - Train ECAPA-TDNN for specific speaker (e.g., train-speaker 03)"
-    echo "  train-other       - Train ECAPA-TDNN on other.csv for all speakers"
-    echo "  train-other-speaker N - Train ECAPA-TDNN on other.csv for a speaker"
-    echo "  train-first       - Train ECAPA-TDNN on first segment for all speakers"
-    echo "  train-first-speaker N - Train ECAPA-TDNN on first segment for a speaker"
-    echo "  train-other-first       - Train ECAPA-TDNN on first segment from other.csv (all)"
-    echo "  train-other-first-speaker N - Train ECAPA-TDNN on first segment from other.csv (speaker)"
-    echo "  train-lda        - Train all LDA models"
-    echo "  train-lda-speaker N - Train LDA for specific speaker (e.g., train-lda-speaker 03)"
-    echo "  train-plda       - Train all PLDA models"
-    echo "  train-plda-speaker N - Train PLDA for specific speaker (e.g., train-plda-speaker 03)"
-    echo "  train-plda-first       - Train PLDA on first segment for all speakers"
-    echo "  train-plda-first-speaker N - Train PLDA on first segment for a speaker"
-    echo "  train-plda-dev     - Train PLDA on dev embeddings for all speakers"
-    echo "  train-plda-dev-speaker N - Train PLDA on dev embeddings for specific speaker"
-    echo "  train-plda-other     - Train PLDA on other embeddings for all speakers"
-    echo "  train-plda-other-speaker N - Train PLDA on other embeddings for specific speaker"
-    echo "  extract-embeddings - Extract embeddings for all speakers"
-    echo "  extract-embeddings-speaker N - Extract embeddings for specific speaker"
-    echo "  avg-embeddings     - Average train embeddings per emotion for all speakers"
-    echo "  avg-embeddings-speaker N - Average train embeddings for a speaker"
-    echo "  avg-embeddings-other     - Average other embeddings per emotion for all speakers"
-    echo "  avg-embeddings-other-speaker N - Average other embeddings for a speaker"
-    echo "  avg-test-embeddings     - Average test embeddings by base id for all speakers"
-    echo "  avg-test-embeddings-speaker N - Average test embeddings by base id for a speaker"
-    echo "  test-noavg        - Build test CSV without averaging"
-    echo "  test-noavg-speaker N - Build test CSV without averaging for a speaker"
-    echo "  test-first        - Build test CSV using first segment per base id"
-    echo "  test-first-speaker N - Build test CSV using first segment per base id for a speaker"
-    echo "  test-emotions-first       - Test centroid classifier on first segment for all speakers"
-    echo "  test-emotions-first-speaker N - Test centroid classifier on first segment for a speaker"
-    echo "  score-plda        - PLDA scoring for all speakers"
-    echo "  score-plda-speaker N - PLDA scoring for a speaker"
-    echo "  score-plda-noavg        - PLDA scoring using test_noavg_embeddings.csv"
-    echo "  score-plda-noavg-speaker N - PLDA scoring (noavg) for a speaker"
-    echo "  metadata         - Extract metadata only"
-    echo "  segment          - Segment audio only"
-    echo "  mfcc             - Extract MFCC features only"
-    echo "  create-mfcc-csv  - Create MFCC features CSV from .npy files"
-    echo "  loso             - Create LOSO splits only"
-    echo "  splits           - Create train/val splits only"
-    echo "  verify           - Verify installation"
-    echo "  help             - Show this help message"
+    echo "Pipeline stages:"
+    echo "  1  segment       Segment audio files and create CSV"
+    echo "  2  mfcc          Extract MFCC features (396x40)"
+    echo "  3  loso          Create LOSO + 80/20 train/val splits"
+    echo "  4  train         Train ECAPA-TDNN model per speaker"
+    echo "  5  embeddings    Extract embeddings from trained models"
+    echo "  6  train-plda    Train PLDA model per speaker"
+    echo "  7  test-plda     Test PLDA model"
+    echo ""
+    echo "Compound commands:"
+    echo "  all              Run all 7 stages"
+    echo "  preprocess       Stages 1-3 (segment + mfcc + loso)"
+    echo "  pipeline         Stages 4-7 (train + embeddings + plda train + plda test)"
+    echo ""
+    echo "Options:"
+    echo "  --speaker N      Run stage for specific speaker only (e.g., --speaker 03)"
     echo ""
     echo "Examples:"
-    echo "  ./run.sh all                # Run complete pipeline"
-    echo "  ./run.sh preprocess         # Preprocessing only"
-    echo "  ./run.sh create-mfcc-csv    # Create MFCC CSV from .npy files"
-    echo "  ./run.sh train-speaker 03   # Train ECAPA-TDNN for speaker 03"
-    echo "  ./run.sh train-lda          # Train all LDA models"
-    echo "  ./run.sh train-lda-speaker 03  # Train LDA for speaker 03"
-    echo "  ./run.sh extract-embeddings-speaker 03  # Extract embeddings for speaker 03"
-    echo "  ./run.sh train-plda-speaker 03  # Train PLDA for speaker 03"
-    echo "  ./run.sh train-plda-dev        # Train PLDA on dev embeddings"
-    echo "  ./run.sh train-other        # Train ECAPA on other.csv for all speakers"
-    echo "  ./run.sh train-other-speaker 03  # Train ECAPA on other.csv for speaker 03"
-    echo "  ./run.sh train-first        # Train ECAPA on first segment for all speakers"
-    echo "  ./run.sh train-first-speaker 03  # Train ECAPA on first segment for speaker 03"
-    echo "  ./run.sh train-other-first  # Train ECAPA on first segment from other.csv"
-    echo "  ./run.sh train-plda-dev-speaker 03  # Train PLDA on dev embeddings for speaker 03"
-    echo "  ./run.sh train-plda-other        # Train PLDA on other embeddings"
-    echo "  ./run.sh train-plda-other-speaker 03  # Train PLDA on other embeddings for speaker 03"
-    echo "  ./run.sh train-plda-first        # Train PLDA on first segment for all speakers"
-    echo "  ./run.sh train-plda-first-speaker 03  # Train PLDA on first segment for speaker 03"
-    echo "  ./run.sh avg-embeddings    # Average train embeddings per emotion"
-    echo "  ./run.sh avg-embeddings-speaker 03  # Average train embeddings for speaker 03"
-    echo "  ./run.sh avg-embeddings-other    # Average other embeddings per emotion"
-    echo "  ./run.sh avg-embeddings-other-speaker 03  # Average other embeddings for speaker 03"
-    echo "  ./run.sh avg-test-embeddings    # Average test embeddings by base id"
-    echo "  ./run.sh avg-test-embeddings-speaker 03  # Average test embeddings for speaker 03"
-    echo "  ./run.sh test-noavg    # Build test CSV without averaging"
-    echo "  ./run.sh test-noavg-speaker 03  # Build test CSV without averaging for speaker 03"
-    echo "  ./run.sh test-first    # Build test CSV using first segment per base id"
-    echo "  ./run.sh test-first-speaker 03  # Build test CSV using first segment per base id for speaker 03"
-    echo "  ./run.sh test-emotions-first    # Test centroid classifier on first segment"
-    echo "  ./run.sh test-emotions-first-speaker 03  # Test centroid classifier on first segment for speaker 03"
-    echo "  ./run.sh score-plda    # PLDA scoring for all speakers"
-    echo "  ./run.sh score-plda-speaker 03  # PLDA scoring for speaker 03"
-    echo "  ./run.sh score-plda-noavg    # PLDA scoring using noavg test CSV"
-    echo "  ./run.sh score-plda-noavg-speaker 03  # PLDA scoring noavg for speaker 03"
+    echo "  ./run.sh all"
+    echo "  ./run.sh train --speaker 03"
+    echo "  ./run.sh embeddings --speaker 03"
+    echo "  ./run.sh train-plda --speaker 03"
+    echo "  ./run.sh test-plda --speaker 03"
 }
 
-# Parse command
-COMMAND="${1:-help}"
+# Parse speaker flag
+SPEAKER_FLAG=""
+COMMAND="$1"
+shift || true
+for arg in "$@"; do
+    if [[ "$arg" == "--speaker" ]]; then
+        shift
+        SPEAKER_FLAG="--speaker $1"
+        shift
+    fi
+done
 
 case "$COMMAND" in
-    all)
-        print_header "Running Complete Pipeline"
-        python main.py --all
-        print_success "Complete pipeline finished!"
-        ;;
-    
-    preprocess)
-        print_header "Running Preprocessing Pipeline"
-        python main.py --metadata --segment --mfcc
-        print_success "Preprocessing complete!"
-        ;;
-    
-    prepare)
-        print_header "Preparing Data (LOSO + Splits)"
-        python main.py --loso --splits
-        print_success "Data preparation complete!"
-        ;;
-    
-    train)
-        print_header "Training All Models"
-        python main.py --train
-        print_success "Training complete!"
-        ;;
-    
-    train-speaker)
-        SPEAKER="${2:-03}"
-        print_header "Training ECAPA-TDNN for Speaker $SPEAKER"
-        python main.py --train --speaker "$SPEAKER"
-        print_success "ECAPA-TDNN training complete for speaker $SPEAKER!"
-        ;;
-
-    train-other)
-        print_header "Training ECAPA-TDNN on other.csv for All Speakers"
-        python train_ecapa_models.py --train-other --no-valid
-        print_success "ECAPA-TDNN other.csv training complete!"
-        ;;
-
-    train-other-speaker)
-        SPEAKER="${2:-03}"
-        print_header "Training ECAPA-TDNN on other.csv for Speaker $SPEAKER"
-        python train_ecapa_models.py --train-other --no-valid --speaker "$SPEAKER"
-        print_success "ECAPA-TDNN other.csv training complete for speaker $SPEAKER!"
-        ;;
-
-    train-first)
-        print_header "Training ECAPA-TDNN on First Segment for All Speakers"
-        python train_ecapa_models.py --first-part
-        print_success "ECAPA-TDNN first-segment training complete!"
-        ;;
-
-    train-first-speaker)
-        SPEAKER="${2:-03}"
-        print_header "Training ECAPA-TDNN on First Segment for Speaker $SPEAKER"
-        python train_ecapa_models.py --first-part --speaker "$SPEAKER"
-        print_success "ECAPA-TDNN first-segment training complete for speaker $SPEAKER!"
-        ;;
-
-    train-other-first)
-        print_header "Training ECAPA-TDNN on First Segment from other.csv (All Speakers)"
-        python train_ecapa_models.py --train-other --no-valid --first-part
-        print_success "ECAPA-TDNN other.csv first-segment training complete!"
-        ;;
-
-    train-other-first-speaker)
-        SPEAKER="${2:-03}"
-        print_header "Training ECAPA-TDNN on First Segment from other.csv for Speaker $SPEAKER"
-        python train_ecapa_models.py --train-other --no-valid --first-part --speaker "$SPEAKER"
-        print_success "ECAPA-TDNN other.csv first-segment training complete for speaker $SPEAKER!"
-        ;;
-    
-    train-lda)
-        print_header "Training LDA Models for All Speakers"
-        python train_lda_models.py --all
-        print_success "LDA training complete!"
-        ;;
-    
-    train-lda-speaker)
-        SPEAKER="${2:-03}"
-        print_header "Training LDA for Speaker $SPEAKER"
-        python train_lda_models.py --speaker "$SPEAKER"
-        print_success "LDA training complete for speaker $SPEAKER!"
-        ;;
-    
-    extract-embeddings)
-        print_header "Extracting Embeddings for All Speakers"
-        python utils/features_extraction/extract_embeddings.py --all
-        print_success "Embedding extraction complete!"
-        ;;
-    
-    extract-embeddings-speaker)
-        SPEAKER="${2:-03}"
-        print_header "Extracting Embeddings for Speaker $SPEAKER"
-        python utils/features_extraction/extract_embeddings.py --speaker "$SPEAKER"
-        print_success "Embedding extraction complete for speaker $SPEAKER!"
-        ;;
-    
-    train-plda)
-        print_header "Training PLDA Models for All Speakers"
-        python train_plda_models.py --all
-        print_success "PLDA training complete!"
-        ;;
-    
-    train-plda-speaker)
-        SPEAKER="${2:-03}"
-        print_header "Training PLDA for Speaker $SPEAKER"
-        python train_plda_models.py --speaker "$SPEAKER"
-        print_success "PLDA training complete for speaker $SPEAKER!"
-        ;;
-
-    train-plda-first)
-        print_header "Training PLDA Models (First Segment)"
-        python train_plda_models.py --all --first-part
-        print_success "PLDA training complete (first segment)!"
-        ;;
-
-    train-plda-first-speaker)
-        SPEAKER="${2:-03}"
-        print_header "Training PLDA for Speaker $SPEAKER (First Segment)"
-        python train_plda_models.py --speaker "$SPEAKER" --first-part
-        print_success "PLDA training complete for speaker $SPEAKER (first segment)!"
-        ;;
-
-    train-plda-dev)
-        print_header "Training PLDA Models (Dev Embeddings)"
-        python train_plda_models.py --all --embeddings-dir data/embeddings
-        print_success "PLDA training complete (dev embeddings)!"
-        ;;
-
-    train-plda-dev-speaker)
-        SPEAKER="${2:-03}"
-        print_header "Training PLDA for Speaker $SPEAKER (Dev Embeddings)"
-        python train_plda_models.py --speaker "$SPEAKER" --embeddings-dir data/embeddings
-        print_success "PLDA training complete for speaker $SPEAKER (dev embeddings)!"
-        ;;
-
-    train-plda-other)
-        print_header "Training PLDA Models (Other Embeddings)"
-        python train_plda_models.py --all --embeddings-dir data/embeddings --embeddings-split other
-        print_success "PLDA training complete (other embeddings)!"
-        ;;
-
-    train-plda-other-speaker)
-        SPEAKER="${2:-03}"
-        print_header "Training PLDA for Speaker $SPEAKER (Other Embeddings)"
-        python train_plda_models.py --speaker "$SPEAKER" --embeddings-dir data/embeddings --embeddings-split other
-        print_success "PLDA training complete for speaker $SPEAKER (other embeddings)!"
-        ;;
-
-    avg-embeddings)
-        print_header "Averaging Train Embeddings per Emotion"
-        python - <<'PY'
-from utils.testing import average_emotion_embeddings_for_all
-
-average_emotion_embeddings_for_all()
-print("Averaging complete")
-PY
-        print_success "Emotion-wise averaging complete!"
-        ;;
-
-    avg-embeddings-speaker)
-        SPEAKER="${2:-03}"
-        print_header "Averaging Train Embeddings per Emotion for Speaker $SPEAKER"
-        python - <<PY
-from utils.testing import average_emotion_embeddings_for_speaker
-
-average_emotion_embeddings_for_speaker("$SPEAKER")
-print("Averaging complete for speaker $SPEAKER")
-PY
-        print_success "Emotion-wise averaging complete for speaker $SPEAKER!"
-        ;;
-
-    avg-embeddings-other)
-        print_header "Averaging Other Embeddings per Emotion"
-        python - <<'PY'
-from utils.testing import average_emotion_embeddings_for_all
-
-average_emotion_embeddings_for_all(train_csv_name="other_embeddings.csv")
-print("Averaging complete")
-PY
-        print_success "Emotion-wise averaging complete (other embeddings)!"
-        ;;
-
-    avg-embeddings-other-speaker)
-        SPEAKER="${2:-03}"
-        print_header "Averaging Other Embeddings per Emotion for Speaker $SPEAKER"
-        python - <<PY
-from utils.testing import average_emotion_embeddings_for_speaker
-
-average_emotion_embeddings_for_speaker("$SPEAKER", train_csv_name="other_embeddings.csv")
-print("Averaging complete for speaker $SPEAKER")
-PY
-        print_success "Emotion-wise averaging complete for speaker $SPEAKER (other embeddings)!"
-        ;;
-
-    avg-test-embeddings)
-        print_header "Averaging Test Embeddings by Base Id"
-        python - <<'PY'
-from utils.testing import average_test_embeddings_for_all
-
-average_test_embeddings_for_all()
-print("Test embedding averaging complete")
-PY
-        print_success "Test embedding averaging complete!"
-        ;;
-
-    avg-test-embeddings-speaker)
-        SPEAKER="${2:-03}"
-        print_header "Averaging Test Embeddings by Base Id for Speaker $SPEAKER"
-        python - <<PY
-from utils.testing import average_test_embeddings_for_speaker
-
-average_test_embeddings_for_speaker("$SPEAKER")
-print("Test embedding averaging complete for speaker $SPEAKER")
-PY
-        print_success "Test embedding averaging complete for speaker $SPEAKER!"
-        ;;
-
-    test-noavg)
-        print_header "Building Test CSV Without Averaging"
-        python - <<'PY'
-from utils.testing import build_test_noavg_for_all
-
-build_test_noavg_for_all()
-print("Test CSV build complete")
-PY
-        print_success "Test CSV (no averaging) complete!"
-        ;;
-
-    test-noavg-speaker)
-        SPEAKER="${2:-03}"
-        print_header "Building Test CSV Without Averaging for Speaker $SPEAKER"
-        python - <<PY
-from utils.testing import build_test_noavg_for_speaker
-
-build_test_noavg_for_speaker("$SPEAKER")
-print("Test CSV build complete for speaker $SPEAKER")
-PY
-        print_success "Test CSV (no averaging) complete for speaker $SPEAKER!"
-        ;;
-
-    test-first)
-        print_header "Building Test CSV Using First Segment per Base Id"
-        python - <<'PY'
-from utils.testing import build_test_firstpart_for_all
-
-build_test_firstpart_for_all()
-print("Test CSV build complete")
-PY
-        print_success "Test CSV (first segment) complete!"
-        ;;
-
-    test-first-speaker)
-        SPEAKER="${2:-03}"
-        print_header "Building Test CSV Using First Segment per Base Id for Speaker $SPEAKER"
-        python - <<PY
-from utils.testing import build_test_firstpart_for_speaker
-
-build_test_firstpart_for_speaker("$SPEAKER")
-print("Test CSV build complete for speaker $SPEAKER")
-PY
-        print_success "Test CSV (first segment) complete for speaker $SPEAKER!"
-        ;;
-
-    test-emotions-first)
-        print_header "Testing Centroid Classifier (First Segment)"
-        python test_emotion_models.py --all --first-part
-        print_success "Centroid testing complete (first segment)!"
-        ;;
-
-    test-emotions-first-speaker)
-        SPEAKER="${2:-03}"
-        print_header "Testing Centroid Classifier (First Segment) for Speaker $SPEAKER"
-        python test_emotion_models.py --speaker "$SPEAKER" --first-part
-        print_success "Centroid testing complete (first segment) for speaker $SPEAKER!"
-        ;;
-
-    score-plda)
-        print_header "PLDA Scoring for All Speakers"
-        python - <<'PY'
-from utils.testing import score_all_speakers_plda
-
-score_all_speakers_plda()
-print("PLDA scoring complete")
-PY
-        print_success "PLDA scoring complete!"
-        ;;
-
-    score-plda-speaker)
-        SPEAKER="${2:-03}"
-        print_header "PLDA Scoring for Speaker $SPEAKER"
-        python - <<PY
-from utils.testing import score_speaker_plda
-
-score_speaker_plda("$SPEAKER")
-print("PLDA scoring complete for speaker $SPEAKER")
-PY
-        print_success "PLDA scoring complete for speaker $SPEAKER!"
-        ;;
-
-    score-plda-noavg)
-        print_header "PLDA Scoring (No Averaging) for All Speakers"
-        python - <<'PY'
-from utils.testing import score_all_speakers_plda
-
-score_all_speakers_plda(test_csv_name="test_noavg_embeddings.csv")
-print("PLDA scoring (noavg) complete")
-PY
-        print_success "PLDA scoring (noavg) complete!"
-        ;;
-
-    score-plda-noavg-speaker)
-        SPEAKER="${2:-03}"
-        print_header "PLDA Scoring (No Averaging) for Speaker $SPEAKER"
-        python - <<PY
-from utils.testing import score_speaker_plda
-
-score_speaker_plda("$SPEAKER", test_csv_name="test_noavg_embeddings.csv")
-print("PLDA scoring (noavg) complete for speaker $SPEAKER")
-PY
-        print_success "PLDA scoring (noavg) complete for speaker $SPEAKER!"
-        ;;
-
-    score-plda-first)
-        print_header "PLDA Scoring (First Segment) for All Speakers"
-        python - <<'PY'
-from utils.testing import score_all_speakers_plda
-
-score_all_speakers_plda(test_csv_name="test_first_embeddings.csv")
-print("PLDA scoring (first segment) complete")
-PY
-        print_success "PLDA scoring (first segment) complete!"
-        ;;
-
-    score-plda-first-speaker)
-        SPEAKER="${2:-03}"
-        print_header "PLDA Scoring (First Segment) for Speaker $SPEAKER"
-        python - <<PY
-from utils.testing import score_speaker_plda
-
-score_speaker_plda("$SPEAKER", test_csv_name="test_first_embeddings.csv")
-print("PLDA scoring (first segment) complete for speaker $SPEAKER")
-PY
-        print_success "PLDA scoring (first segment) complete for speaker $SPEAKER!"
-        ;;
-    
-    metadata)
-        print_header "Extracting Metadata"
-        python main.py --metadata
-        print_success "Metadata extraction complete!"
-        ;;
-    
+    # ----- individual stages -----
     segment)
-        print_header "Segmenting Audio Files"
+        echo -e "${BLUE}Stage 1: Audio Segmentation${NC}"
         python main.py --segment
-        print_success "Audio segmentation complete!"
         ;;
-    
     mfcc)
-        print_header "Extracting MFCC Features"
+        echo -e "${BLUE}Stage 2: MFCC Feature Extraction${NC}"
         python main.py --mfcc
-        print_success "MFCC extraction complete!"
         ;;
-    
-    create-mfcc-csv)
-        print_header "Creating MFCC Features CSV"
-        python utils/features_extraction/create_mfcc_csv.py
-        print_success "MFCC CSV created!"
-        ;;
-    
     loso)
-        print_header "Creating LOSO Splits"
+        echo -e "${BLUE}Stage 3: LOSO + Train/Val Splits${NC}"
         python main.py --loso
-        print_success "LOSO splits created!"
         ;;
-    
-    splits)
-        print_header "Creating Train/Val Splits"
-        python main.py --splits
-        print_success "Train/val splits created!"
+    train)
+        echo -e "${BLUE}Stage 4: ECAPA-TDNN Training${NC}"
+        python main.py --train $SPEAKER_FLAG
         ;;
-    
-    verify)
-        print_header "Verifying Installation"
-        python verify_installation.py
+    embeddings)
+        echo -e "${BLUE}Stage 5: Embedding Extraction${NC}"
+        python main.py --embeddings $SPEAKER_FLAG
         ;;
-    
-    help|--help|-h)
+    train-plda)
+        echo -e "${BLUE}Stage 6: PLDA Training${NC}"
+        python main.py --train-plda $SPEAKER_FLAG
+        ;;
+    test-plda)
+        echo -e "${BLUE}Stage 7: PLDA Testing${NC}"
+        python main.py --test-plda $SPEAKER_FLAG
+        ;;
+
+    # ----- compound commands -----
+    preprocess)
+        echo -e "${BLUE}Stages 1-3: Preprocessing${NC}"
+        python main.py --segment --mfcc --loso
+        ;;
+    pipeline)
+        echo -e "${BLUE}Stages 4-7: Training + PLDA${NC}"
+        python main.py --train --embeddings --train-plda --test-plda $SPEAKER_FLAG
+        ;;
+    all)
+        echo -e "${BLUE}Running all 7 stages${NC}"
+        python main.py --all
+        ;;
+
+    # ----- help -----
+    help|--help|-h|"")
         usage
         ;;
-    
     *)
-        print_error "Unknown command: $COMMAND"
+        echo -e "${RED}Unknown command: $COMMAND${NC}"
         echo ""
         usage
         exit 1
         ;;
 esac
+
+echo -e "${GREEN}Done.${NC}"

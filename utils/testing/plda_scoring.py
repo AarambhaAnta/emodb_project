@@ -1,396 +1,186 @@
-"""
-PLDA scoring utilities using averaged test embeddings and emotion centroids.
-
-This module scores each test embedding against 7 emotion centroids using
-SpeechBrain PLDA fast scoring and produces metrics + plots.
-"""
+"""PLDA scoring: predict emotion labels for test embeddings and compute metrics."""
 import json
 import os
 import re
 from pathlib import Path
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
 
-from speechbrain.processing.PLDA_LDA import StatObject_SB, Ndx, fast_PLDA_scoring
-
 from utils.extract_config import get_config
-from utils.testing.emotion_testing import EMOTION_LABELS, _length_normalize
+from utils.training.plda_trainer import PLDAModel
+
+EMOTION_LABELS = {
+    0: "Happiness", 1: "Neutral", 2: "Anger",
+    3: "Fear",      4: "Boredom", 5: "Disgust", 6: "Sadness",
+}
 
 
-def _load_plda_model(model_path):
-    import pickle
-    with open(model_path, "rb") as f:
-        data = pickle.load(f)
-
-    if "plda" not in data:
-        raise ValueError(f"Invalid PLDA model payload: {model_path}")
-
-    return data
+def _l2_norm(X):
+    norms = np.linalg.norm(X, axis=1, keepdims=True)
+    return X / np.where(norms > 0, norms, 1.0)
 
 
-def _apply_whitening(embeddings, mean, mat):
-    centered = embeddings - mean.reshape(1, -1)
-    return centered @ mat
-
-
-def _build_stat_object(embeddings, ids):
-    modelset = np.array([str(i) for i in ids], dtype="|O")
-    segset = np.array([str(i) for i in ids], dtype="|O")
-    start = np.array([None] * len(ids))
-    stop = np.array([None] * len(ids))
-    stat0 = np.ones((len(ids), 1), dtype=np.float64)
-    stat1 = np.asarray(embeddings, dtype=np.float64)
-
-    return StatObject_SB(
-        modelset=modelset,
-        segset=segset,
-        start=start,
-        stop=stop,
-        stat0=stat0,
-        stat1=stat1,
-    )
-
-
-def _emotion_id_from_path(path_value):
-    match = re.search(r"emotion_(\d+)\.npy$", str(path_value))
-    if not match:
-        return None
-    return int(match.group(1))
-
-
-def _load_test_averaged_csv(csv_path):
-    df = pd.read_csv(csv_path)
-    required = {"id", "embedding_path", "emotion_path", "ground_truth"}
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(f"Missing columns in {csv_path}: {sorted(missing)}")
-
-    grouped = {}
+def _load_test_embeddings(emb_csv):
+    """Load raw (X, y_true, ids) from a *_embeddings.csv file."""
+    df = pd.read_csv(emb_csv)
+    X, y, ids = [], [], []
     for _, row in df.iterrows():
-        sample_id = str(row["id"])
-        grouped.setdefault(sample_id, []).append(row)
-
-    test_ids = []
-    test_paths = []
-    gt_labels = []
-
-    for sample_id, rows in sorted(grouped.items()):
-        emb_path = rows[0]["embedding_path"]
-        if not os.path.exists(emb_path):
+        path = str(row['embedding'])
+        if not os.path.exists(path):
             continue
-        test_ids.append(sample_id)
-        test_paths.append(emb_path)
-
-        gt = None
-        for row in rows:
-            try:
-                gt_value = int(row["ground_truth"])
-            except Exception:
-                gt_value = None
-            if gt_value == 1:
-                gt = _emotion_id_from_path(row["emotion_path"])
-                break
-        gt_labels.append(gt)
-
-    return test_ids, test_paths, gt_labels
+        emb = np.load(path).flatten().astype(np.float64)
+        emb = np.nan_to_num(emb)
+        X.append(emb)
+        y.append(int(row['label']))
+        ids.append(str(row.get('ID', row.get('id', ''))))
+    return np.array(X), np.array(y), ids
 
 
-def score_speaker_plda(
-    speaker_id,
-    base_dir=None,
-    model_path=None,
-    results_dir=None,
-    testing_dir=None,
-    test_csv_name="test_averaged_embeddings.csv"
-):
+def _aggregate_utterances(X, y, ids):
+    """Average segments per utterance (strip trailing _N), then L2-normalise.
+
+    Returns utterance-level (X_agg, y_agg, ids_agg).
+    """
+    base_ids = [re.sub(r'_\d+$', '', sid) for sid in ids]
+    groups = defaultdict(list)
+    label_for = {}
+    for i, (base_id, label) in enumerate(zip(base_ids, y)):
+        groups[base_id].append(i)
+        label_for[base_id] = label
+
+    X_agg, y_agg, ids_agg = [], [], []
+    for base_id in sorted(groups):
+        idx = groups[base_id]
+        X_agg.append(X[idx].mean(axis=0))
+        y_agg.append(label_for[base_id])
+        ids_agg.append(base_id)
+
+    return _l2_norm(np.array(X_agg)), np.array(y_agg), ids_agg
+
+
+def _plot(results_dir, conf_mat, report):
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        if conf_mat is not None:
+            fig, ax = plt.subplots(figsize=(7, 6))
+            ax.imshow(conf_mat, cmap='Blues')
+            labels = [EMOTION_LABELS[i] for i in sorted(EMOTION_LABELS)]
+            ax.set_xticks(range(7)); ax.set_xticklabels(labels, rotation=45, ha='right')
+            ax.set_yticks(range(7)); ax.set_yticklabels(labels)
+            ax.set_xlabel('Predicted'); ax.set_ylabel('True')
+            ax.set_title('Confusion Matrix')
+            fig.tight_layout()
+            fig.savefig(results_dir / 'confusion_matrix.png', dpi=150)
+            plt.close(fig)
+
+        if report:
+            names = [EMOTION_LABELS[i] for i in sorted(EMOTION_LABELS) if EMOTION_LABELS[i] in report]
+            f1s = [report[n]['f1-score'] for n in names]
+            if f1s:
+                fig, ax = plt.subplots(figsize=(7, 4))
+                ax.bar(names, f1s, color='#4C78A8')
+                ax.set_title('F1 Score per Emotion'); ax.set_ylabel('F1'); ax.set_ylim(0, 1)
+                fig.tight_layout()
+                fig.savefig(results_dir / 'f1_per_class.png', dpi=150)
+                plt.close(fig)
+    except Exception:
+        pass  # plots are optional
+
+
+def score_speaker_plda(speaker_id, base_dir=None, results_dir=None):
+    """Score test embeddings for one speaker using the trained PLDA model.
+
+    Returns a dict with 'accuracy', 'f1_macro', 'f1_weighted', 'scores_csv'.
+    """
     config = get_config()
-    base_dir = Path(base_dir or config.get("BASE_DIR", Path(__file__).resolve().parents[2]))
-    paths = config.get("PATHS", {})
+    base_dir = Path(base_dir or config['BASE_DIR'])
+    paths = config.get('PATHS', {})
 
-    if testing_dir is None:
-        testing_dir = base_dir / paths.get("TESTING", "data/testing")
-    else:
-        testing_dir = Path(testing_dir)
-
-    if results_dir is None:
-        results_dir = base_dir / paths.get("RESULTS", "output/results")
-    else:
-        results_dir = Path(results_dir)
-
-    if model_path is None:
-        models_root = base_dir / paths.get("MODELS", "output/models")
-        model_path = models_root / "plda" / f"speaker_{speaker_id}" / "plda_model.pkl"
-    else:
-        model_path = Path(model_path)
+    emb_dir = base_dir / paths.get('EMBEDDINGS', 'output/embeddings') / f"speaker_{speaker_id}"
+    model_path = base_dir / 'output' / 'models' / 'plda' / f"speaker_{speaker_id}" / 'plda_model.pkl'
+    out_dir = Path(results_dir or (base_dir / paths.get('RESULTS', 'output/results'))) / f"speaker_{speaker_id}"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     if not model_path.exists():
         raise FileNotFoundError(f"PLDA model not found: {model_path}")
 
-    model_payload = _load_plda_model(str(model_path))
-    plda = model_payload["plda"]
-    whiten_mean = model_payload.get("whiten_mean")
-    whiten_mat = model_payload.get("whiten_mat")
-    length_norm = model_payload.get("length_norm", True)
-
-    speaker_test_dir = testing_dir / f"speaker_{speaker_id}"
-    test_csv = speaker_test_dir / test_csv_name
+    test_csv = emb_dir / 'test_embeddings.csv'
     if not test_csv.exists():
-        raise FileNotFoundError(f"Test averaged CSV not found: {test_csv}")
+        raise FileNotFoundError(f"Test embeddings CSV not found: {test_csv}")
 
-    test_ids, test_paths, gt_labels = _load_test_averaged_csv(str(test_csv))
-    if not test_ids:
-        raise ValueError(f"No test embeddings found for speaker {speaker_id}")
+    model = PLDAModel.load(str(model_path))
+    X_test, y_true, ids = _load_test_embeddings(str(test_csv))
+    X_test, y_true, ids = _aggregate_utterances(X_test, y_true, ids)
 
-    test_embeddings = []
-    for path in test_paths:
-        emb = np.load(path)
-        emb = np.asarray(emb, dtype=np.float64)
-        if np.isnan(emb).any() or np.isinf(emb).any():
-            emb = np.nan_to_num(emb, nan=0.0, posinf=0.0, neginf=0.0)
-        test_embeddings.append(emb)
-    test_embeddings = np.vstack(test_embeddings)
+    y_pred = model.predict(X_test)
+    probs = model.predict_proba(X_test)
 
-    test_embeddings_norm = test_embeddings
-    if length_norm:
-        test_embeddings_norm = _length_normalize(test_embeddings_norm)
-    test_embeddings_plda = test_embeddings_norm
-    if whiten_mean is not None and whiten_mat is not None:
-        test_embeddings_plda = _apply_whitening(test_embeddings_plda, whiten_mean, whiten_mat)
-
-    # Load emotion centroids for enrollment
-    centroids = []
-    centroid_ids = []
-    for emotion_id in sorted(EMOTION_LABELS.keys()):
-        centroid_path = speaker_test_dir / "train" / f"emotion_{emotion_id}.npy"
-        if not centroid_path.exists():
-            continue
-        emb = np.load(centroid_path)
-        emb = np.asarray(emb, dtype=np.float64)
-        if np.isnan(emb).any() or np.isinf(emb).any():
-            emb = np.nan_to_num(emb, nan=0.0, posinf=0.0, neginf=0.0)
-        centroids.append(emb)
-        centroid_ids.append(emotion_id)
-
-    if not centroids:
-        raise ValueError(f"No centroids found for speaker {speaker_id}")
-
-    centroids = np.vstack(centroids)
-    centroids_norm = centroids
-    if length_norm:
-        centroids_norm = _length_normalize(centroids_norm)
-    centroids_plda = centroids_norm
-    if whiten_mean is not None and whiten_mat is not None:
-        centroids_plda = _apply_whitening(centroids_plda, whiten_mean, whiten_mat)
-
-    enroll_stat = _build_stat_object(centroids_plda, centroid_ids)
-    test_stat = _build_stat_object(test_embeddings_plda, test_ids)
-
-    model_ids = np.array([str(e) for e in centroid_ids], dtype="|O")
-    seg_ids = np.array([str(t) for t in test_ids], dtype="|O")
-    models = np.repeat(model_ids, len(seg_ids))
-    testsegs = np.tile(seg_ids, len(model_ids))
-    ndx = Ndx(models=models, testsegs=testsegs)
-
-    scores = fast_PLDA_scoring(
-        enroll=enroll_stat,
-        test=test_stat,
-        ndx=ndx,
-        mu=plda.mean,
-        F=plda.F,
-        Sigma=plda.Sigma,
-        p_known=0.0,
-        scaling_factor=1.0,
-        check_missing=True,
+    accuracy   = accuracy_score(y_true, y_pred)
+    f1_macro   = f1_score(y_true, y_pred, average='macro',    zero_division=0)
+    f1_micro   = f1_score(y_true, y_pred, average='micro',    zero_division=0)
+    f1_weighted = f1_score(y_true, y_pred, average='weighted', zero_division=0)
+    conf_mat   = confusion_matrix(y_true, y_pred, labels=sorted(EMOTION_LABELS))
+    report     = classification_report(
+        y_true, y_pred,
+        labels=sorted(EMOTION_LABELS),
+        target_names=[EMOTION_LABELS[i] for i in sorted(EMOTION_LABELS)],
+        zero_division=0, output_dict=True,
     )
 
-    scoremat = scores.scoremat
-    cosine_mat = centroids_norm @ test_embeddings_norm.T
-    pred_idx = np.argmax(scoremat, axis=0)
-    pred_labels = [int(model_ids[i]) for i in pred_idx]
-    pred_scores = scoremat[pred_idx, np.arange(scoremat.shape[1])]
-
-    results_dir = results_dir / f"speaker_{speaker_id}"
-    results_dir.mkdir(parents=True, exist_ok=True)
-
-    # Metrics
-    valid_indices = [i for i, gt in enumerate(gt_labels) if gt is not None]
-    if valid_indices:
-        y_true = [gt_labels[i] for i in valid_indices]
-        y_pred = [pred_labels[i] for i in valid_indices]
-        accuracy = accuracy_score(y_true, y_pred)
-        f1_macro = f1_score(y_true, y_pred, average="macro")
-        f1_micro = f1_score(y_true, y_pred, average="micro")
-        f1_weighted = f1_score(y_true, y_pred, average="weighted")
-        report = classification_report(
-            y_true,
-            y_pred,
-            labels=sorted(EMOTION_LABELS.keys()),
-            target_names=[EMOTION_LABELS[i] for i in sorted(EMOTION_LABELS.keys())],
-            zero_division=0,
-            output_dict=True,
-        )
-        conf_mat = confusion_matrix(
-            y_true,
-            y_pred,
-            labels=sorted(EMOTION_LABELS.keys())
-        )
-    else:
-        accuracy = f1_macro = f1_micro = f1_weighted = None
-        report = {}
-        conf_mat = None
-
+    # Per-sample scores CSV
     rows = []
-    for idx, test_id in enumerate(test_ids):
-        gt_label = gt_labels[idx]
-        scores_vec = scoremat[:, idx]
-        scores_max = np.max(scores_vec)
-        exp_scores = np.exp(scores_vec - scores_max)
-        prob_vec = exp_scores / np.sum(exp_scores)
-        for e_idx, emotion_id in enumerate(model_ids):
-            if gt_label is None:
-                gt_value = None
-            else:
-                gt_value = 1 if int(emotion_id) == int(gt_label) else 0
-            emotion_name = EMOTION_LABELS.get(int(emotion_id), str(emotion_id))
-            rows.append({
-                "id": test_id,
-                "emotion": emotion_name,
-                "score": float(scoremat[e_idx, idx]),
-                "cosine_similarity": float(cosine_mat[e_idx, idx]),
-                "ground_truth": gt_value,
-                "probability": float(f"{prob_vec[e_idx]:.5f}"),
-                "probability_percent": float(f"{prob_vec[e_idx] * 100.0:.5f}")
-            })
-
-    scores_csv = results_dir / "plda_scores.csv"
+    for i, (sid, gt, pred) in enumerate(zip(ids, y_true, y_pred)):
+        prob_row = {EMOTION_LABELS[j]: float(f"{probs[i, j]:.5f}")
+                   for j in range(len(EMOTION_LABELS))}
+        rows.append({'id': sid, 'ground_truth': int(gt), 'predicted': int(pred),
+                     'correct': int(gt) == int(pred), **prob_row})
+    scores_csv = out_dir / 'plda_scores.csv'
     pd.DataFrame(rows).to_csv(scores_csv, index=False)
 
     metrics = {
-        "speaker": speaker_id,
-        "model_path": str(model_path),
-        "test_csv": str(test_csv),
-        "scores_csv": str(scores_csv),
-        "accuracy": accuracy,
-        "f1_macro": f1_macro,
-        "f1_micro": f1_micro,
-        "f1_weighted": f1_weighted,
-        "classification_report": report,
-        "confusion_matrix": conf_mat.tolist() if conf_mat is not None else None,
+        'speaker': speaker_id, 'accuracy': accuracy,
+        'f1_macro': f1_macro, 'f1_micro': f1_micro, 'f1_weighted': f1_weighted,
+        'scores_csv': str(scores_csv),
+        'classification_report': report,
+        'confusion_matrix': conf_mat.tolist(),
     }
-
-    metrics_json = results_dir / "plda_metrics.json"
-    with open(metrics_json, "w") as f:
+    with open(out_dir / 'plda_metrics.json', 'w') as f:
         json.dump(metrics, f, indent=2)
 
-    _plot_metrics(
-        results_dir=results_dir,
-        confusion_matrix=conf_mat,
-        report=report
-    )
-
+    _plot(out_dir, conf_mat, report)
     return metrics
 
 
-def _plot_metrics(results_dir, confusion_matrix, report):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    if confusion_matrix is not None:
-        fig, ax = plt.subplots(figsize=(7, 6))
-        im = ax.imshow(confusion_matrix, cmap="Blues")
-        ax.set_title("Confusion Matrix")
-        ax.set_xlabel("Predicted")
-        ax.set_ylabel("True")
-        ax.set_xticks(range(len(EMOTION_LABELS)))
-        ax.set_yticks(range(len(EMOTION_LABELS)))
-        ax.set_xticklabels([EMOTION_LABELS[i] for i in sorted(EMOTION_LABELS.keys())], rotation=45, ha="right")
-        ax.set_yticklabels([EMOTION_LABELS[i] for i in sorted(EMOTION_LABELS.keys())])
-        fig.colorbar(im, ax=ax)
-        fig.tight_layout()
-        fig.savefig(results_dir / "confusion_matrix.png", dpi=150)
-        plt.close(fig)
-
-    if report:
-        f1_scores = []
-        labels = []
-        for label_id in sorted(EMOTION_LABELS.keys()):
-            label_name = EMOTION_LABELS[label_id]
-            if label_name in report:
-                f1_scores.append(report[label_name]["f1-score"])
-                labels.append(label_name)
-
-        if f1_scores:
-            fig, ax = plt.subplots(figsize=(7, 4))
-            ax.bar(labels, f1_scores, color="#4C78A8")
-            ax.set_title("F1 Score per Emotion")
-            ax.set_ylabel("F1")
-            ax.set_ylim(0, 1)
-            fig.tight_layout()
-            fig.savefig(results_dir / "f1_per_class.png", dpi=150)
-            plt.close(fig)
-
-
-def score_all_speakers_plda(base_dir=None, model_root=None, results_dir=None, testing_dir=None, test_csv_name="test_averaged_embeddings.csv"):
+def score_all_speakers_plda(base_dir=None, results_dir=None):
+    """Score all speakers; returns per-speaker metrics dict and writes a summary CSV."""
     config = get_config()
-    base_dir = Path(base_dir or config.get("BASE_DIR", Path(__file__).resolve().parents[2]))
-    paths = config.get("PATHS", {})
+    base_dir = Path(base_dir or config['BASE_DIR'])
+    emb_root = base_dir / config.get('PATHS', {}).get('EMBEDDINGS', 'output/embeddings')
 
-    if testing_dir is None:
-        testing_dir = base_dir / paths.get("TESTING", "data/testing")
-    else:
-        testing_dir = Path(testing_dir)
+    speakers = sorted(
+        d.replace('speaker_', '') for d in os.listdir(emb_root)
+        if d.startswith('speaker_')
+    ) if emb_root.exists() else []
 
-    if results_dir is None:
-        results_root = base_dir / paths.get("RESULTS", "output/results")
-    else:
-        results_root = Path(results_dir)
-
-    speaker_dirs = sorted([d.name for d in testing_dir.iterdir() if d.is_dir() and d.name.startswith("speaker_")])
-    results = {}
-
-    for speaker_dir in speaker_dirs:
-        speaker_id = speaker_dir.replace("speaker_", "")
+    all_results = {}
+    for spk in speakers:
         try:
-            model_path = None
-            if model_root is not None:
-                model_path = Path(model_root) / f"speaker_{speaker_id}" / "plda_model.pkl"
-            results[speaker_id] = score_speaker_plda(
-                speaker_id=speaker_id,
-                base_dir=base_dir,
-                model_path=model_path,
-                results_dir=results_root,
-                testing_dir=testing_dir,
-                test_csv_name=test_csv_name,
-            )
-        except Exception as exc:
-            results[speaker_id] = {"error": str(exc)}
+            all_results[spk] = score_speaker_plda(spk, base_dir=base_dir, results_dir=results_dir)
+        except Exception as e:
+            all_results[spk] = {'error': str(e)}
 
-    summary_rows = []
-    for speaker_id, result in results.items():
-        if isinstance(result, dict) and "error" in result:
-            summary_rows.append({
-                "speaker": speaker_id,
-                "accuracy": None,
-                "f1_macro": None,
-                "f1_micro": None,
-                "f1_weighted": None,
-                "error": result["error"]
-            })
-        else:
-            summary_rows.append({
-                "speaker": speaker_id,
-                "accuracy": result.get("accuracy"),
-                "f1_macro": result.get("f1_macro"),
-                "f1_micro": result.get("f1_micro"),
-                "f1_weighted": result.get("f1_weighted"),
-                "error": None
-            })
+    # Summary CSV
+    out_root = Path(results_dir or (base_dir / config.get('PATHS', {}).get('RESULTS', 'output/results')))
+    out_root.mkdir(parents=True, exist_ok=True)
+    rows = [{'speaker': spk, 'accuracy': r.get('accuracy'), 'f1_macro': r.get('f1_macro'),
+             'f1_weighted': r.get('f1_weighted'), 'error': r.get('error')}
+            for spk, r in all_results.items()]
+    pd.DataFrame(rows).to_csv(out_root / 'plda_summary.csv', index=False)
 
-    results_root.mkdir(parents=True, exist_ok=True)
-    summary_csv = results_root / "plda_summary.csv"
-    pd.DataFrame(summary_rows).to_csv(summary_csv, index=False)
-
-    return results
+    return all_results

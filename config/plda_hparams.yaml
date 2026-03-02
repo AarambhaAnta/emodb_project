@@ -1,9 +1,8 @@
+
 # PLDA Training Hyperparameters
 
 # SpeechBrain PLDA settings
-use_lda: true  # Apply LDA before PLDA for dimensionality reduction
-lda_dim: null  # LDA output dimension (null = n_classes - 1 = 6 for 7 emotions)
-plda_dim: null  # PLDA dimension (null = same as LDA output)
+plda_dim: null  # PLDA dimension (null = embedding_dim)
 
 # Input settings
 embedding_dim: 192  # ECAPA-TDNN embedding dimension
@@ -31,6 +30,4 @@ emotion_labels:
 # Training notes:
 # - PLDA requires embeddings as input (not raw features)
 # - Extract embeddings from trained ECAPA-TDNN models first
-# - LDA dimensionality reduction is recommended before PLDA
-# - Typical flow: MFCC → ECAPA embeddings → LDA → PLDA
 # - PLDA is especially useful for speaker-independent emotion recognition
