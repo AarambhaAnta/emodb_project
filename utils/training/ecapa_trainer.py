@@ -28,6 +28,13 @@ _LABEL_ENCODER_PATH = str(Path(__file__).parent.parent.parent / 'config' / 'labe
 class EmotionBrain(sb.core.Brain):
     """SpeechBrain Brain for ECAPA-TDNN emotion classification."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.best_val_error = float('inf')
+        self.epochs_without_improvement = 0
+        # Read patience from hparams yaml (key: early_stopping_patience), fallback to 8
+        self.early_stopping_patience = getattr(self.hparams, 'early_stopping_patience', 8)
+
     def on_stage_start(self, stage, epoch=None):
         if stage == sb.Stage.VALID:
             self.error_metrics = self.hparams.error_stats()
@@ -53,10 +60,43 @@ class EmotionBrain(sb.core.Brain):
         lens = torch.clamp(lens, min=1e-6, max=1.0)
         feats = torch.clamp(feats, -50.0, 50.0)
 
+        # Data augmentation: SpecAugment during training only (if enabled)
+        use_aug = getattr(self.hparams, 'use_augmentation', True)
+        if stage == sb.Stage.TRAIN and use_aug:
+            feats = self._apply_spec_augment(feats)
+
         feats = self.modules.mean_var_norm(feats, lens)
         emb = self.modules.embedding_model(feats, lens)
         out = self.modules.classifier(emb)
         return out, lens
+
+    def _apply_spec_augment(self, feats):
+        """Apply time and frequency masking for data augmentation.
+        
+        Reduced aggressiveness for small datasets: only 30% probability,
+        smaller mask sizes.
+        """
+        batch_size, time_steps, freq_bins = feats.shape
+        
+        # Time masking: mask up to 5% of time steps (reduced from 10%)
+        if time_steps > 20:
+            for i in range(batch_size):
+                if torch.rand(1).item() > 0.7:  # 30% probability (reduced from 50%)
+                    t_mask_width = int(0.05 * time_steps)  # 5% (reduced from 10%)
+                    if t_mask_width > 0:
+                        t_start = torch.randint(0, max(1, time_steps - t_mask_width), (1,)).item()
+                        feats[i, t_start:t_start + t_mask_width, :] = 0
+        
+        # Frequency masking: mask up to 2-3 frequency bins (reduced from 5)
+        if freq_bins > 5:
+            for i in range(batch_size):
+                if torch.rand(1).item() > 0.7:  # 30% probability (reduced from 50%)
+                    f_mask_width = min(3, freq_bins // 12)  # Smaller masks
+                    if f_mask_width > 0:
+                        f_start = torch.randint(0, max(1, freq_bins - f_mask_width), (1,)).item()
+                        feats[i, :, f_start:f_start + f_mask_width] = 0
+        
+        return feats
 
     def compute_objectives(self, predictions, batch, stage):
         out, lens = predictions
@@ -80,11 +120,42 @@ class EmotionBrain(sb.core.Brain):
                 f"Epoch {epoch} | val_loss: {stage_loss:.4f} | "
                 f"val_error: {self.last_valid_error:.4f} | val_acc: {val_acc:.4f} ({val_acc*100:.2f}%)"
             )
+            
+            # Early stopping logic
+            improvement_threshold = 0.005  # Only count as improvement if error reduces by >0.5%
+            if self.last_valid_error < (self.best_val_error - improvement_threshold):
+                self.best_val_error = self.last_valid_error
+                self.epochs_without_improvement = 0
+                logger.info(f"✓ New best validation error: {self.best_val_error:.4f}")
+            else:
+                self.epochs_without_improvement += 1
+                logger.info(f"No improvement for {self.epochs_without_improvement} epoch(s) (best: {self.best_val_error:.4f})")
+            
+            # Trigger early stopping if patience exceeded
+            if self.epochs_without_improvement >= self.early_stopping_patience:
+                logger.info(f"Early stopping triggered after {self.early_stopping_patience} epochs without improvement")
+                self.hparams.epoch_counter.current = self.hparams.epoch_counter.limit
+            
             if self.checkpointer is not None:
                 self.checkpointer.save_and_keep_only(
                     meta={"error": self.last_valid_error},
                     min_keys=["error"],
                 )
+            
+            # Update learning rate if scheduler is ReduceLROnPlateau
+            if hasattr(self.hparams, 'lr_annealing'):
+                try:
+                    old_lr, new_lr = self.hparams.lr_annealing(
+                        [self.optimizer], 
+                        current_epoch=epoch,
+                        current_loss=self.last_valid_error
+                    )
+                    if old_lr != new_lr:
+                        logger.info(f"Learning rate reduced: {old_lr:.2e} → {new_lr:.2e}")
+                    else:
+                        logger.info(f"Current learning rate: {new_lr:.2e}")
+                except Exception as e:
+                    logger.debug(f"LR scheduler update skipped: {e}")
 
 
 def _prepare_datasets(train_csv, val_csv, tmp_dir):
@@ -159,22 +230,34 @@ def train_speaker_model(speaker_id, loso_dir, output_dir, hparams, run_opts,
         run_opts=run_opts, 
         checkpointer=hparams["checkpointer"],
     )
+    val_loader_kwargs = hparams.get("val_dataloader_options", {
+        "batch_size": hparams["dataloader_options"]["batch_size"],
+        "num_workers": hparams["dataloader_options"].get("num_workers", 0),
+        "shuffle": False,
+        "drop_last": False,
+    })
     brain.fit(
         epoch_counter=hparams["epoch_counter"],
-        train_set=train_data, 
+        train_set=train_data,
         valid_set=val_data,
         train_loader_kwargs=hparams["dataloader_options"],
-        valid_loader_kwargs=hparams["dataloader_options"]
+        valid_loader_kwargs=val_loader_kwargs,
     )
+
+    # CRITICAL FIX: Load the best checkpoint before saving model.pt
+    logger.info(f"Speaker {speaker_id}: Loading best checkpoint...")
+    brain.checkpointer.recover_if_possible(min_key="error")
+    logger.info(f"Speaker {speaker_id}: Best validation error = {brain.best_val_error:.4f}")
 
     torch.save({
         "embedding_model": hparams["embedding_model"].state_dict(),
         "classifier":      hparams["classifier"].state_dict(),
         "normalizer":      hparams["mean_var_norm"].state_dict(),
         "speaker_id":      speaker_id,
+        "best_val_error":  brain.best_val_error,
     }, os.path.join(out_dir, "model.pt"))
 
-    return getattr(brain, 'last_valid_error', 0.0)
+    return brain.best_val_error
 
 
 def train_all_speakers(loso_dir=None, output_dir=None, hparams_file=None, run_opts=None):

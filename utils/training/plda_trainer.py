@@ -4,7 +4,7 @@ https://github.com/RaviSoji/plda
 
 Workflow:
   1. Load embeddings + labels from the embeddings CSV produced by extract_embeddings.py
-  2. Fit plda.Classifier on the training split
+  2. Fit plda.Classifier on the training split (train + val merged)
   3. Save as plda_model.pkl per speaker
 """
 import os
@@ -19,8 +19,11 @@ from plda import Classifier
 logger = logging.getLogger(__name__)
 
 
-def _load_embeddings(emb_csv):
-    """Load (X, y) from an embeddings CSV."""
+def _load_embeddings(emb_csv: str):
+    """Load (X, y) from an embeddings CSV.
+
+    Returns raw (un-normalised) embeddings suitable for PLDA.
+    """
     df = pd.read_csv(emb_csv)
     X, y = [], []
     for _, row in df.iterrows():
@@ -34,9 +37,7 @@ def _load_embeddings(emb_csv):
         y.append(int(row['label']))
     if not X:
         raise ValueError(f"No embeddings loaded from {emb_csv}")
-    X = np.array(X)
-    norms = np.linalg.norm(X, axis=1, keepdims=True)
-    return X / np.where(norms > 0, norms, 1.0), np.array(y)
+    return np.array(X), np.array(y)
 
 
 class PLDAModel:
@@ -44,32 +45,48 @@ class PLDAModel:
 
     def __init__(self, clf=None):
         self.clf = clf
+        self._classes = None   # cached after fit
 
-    def fit(self, X, y, n_components=None):
+    @property
+    def classes(self):
+        """Sorted list of integer class labels (same order as predict_proba columns)."""
+        if self._classes is None and self.clf is not None:
+            self._classes = [int(c) for c in self.clf.get_categories()]
+        return self._classes
+
+    def fit(self, X: np.ndarray, y: np.ndarray, n_components=None):
         self.clf = Classifier()
         self.clf.fit_model(X, y, n_principal_components=n_components)
+        self._classes = [int(c) for c in self.clf.get_categories()]
         return self
 
-    def predict(self, X):
+    def predict(self, X: np.ndarray) -> np.ndarray:
         preds, _ = self.clf.predict(X)
-        return preds
+        # PLDA returns scalar for N=1; ensure always 1-D array
+        return np.atleast_1d(preds)
 
-    def predict_proba(self, X):
-        _, logps = self.clf.predict(X)
-        logps -= logps.max(axis=1, keepdims=True)
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        """Softmax over PLDA log-posteriors → calibrated probabilities (N, n_classes)."""
+        _, logps = self.clf.predict(X)   # (n_classes,) for N=1, (N, n_classes) for N>1
+        logps = np.atleast_2d(logps)     # always (N, n_classes)
+        logps = logps - logps.max(axis=1, keepdims=True)
         probs = np.exp(logps)
         return probs / probs.sum(axis=1, keepdims=True)
 
-    def save(self, path):
+    def save(self, path: str):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'wb') as f:
             pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     @classmethod
-    def load(cls, path):
+    def load(cls, path: str):
         with open(path, 'rb') as f:
             return pickle.load(f)
 
+
+# ---------------------------------------------------------------------------
+# Per-speaker training helpers
+# ---------------------------------------------------------------------------
 
 def train_speaker_plda(speaker_id, loso_dir, output_dir, embeddings_dir,
                        embeddings_split='train', n_components=None):

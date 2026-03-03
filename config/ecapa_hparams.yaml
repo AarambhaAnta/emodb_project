@@ -17,27 +17,38 @@ embedding_dim: 192
 num_classes: 7
 
 # Training parameters
-number_of_epochs: 10
+number_of_epochs: 10  # Allow more convergence; early stopping will terminate sooner if converged
 lr: 0.001
 weight_decay: 0.0002
-# dropout: 0.3
 
-# LR scheduler (CyclicLR matching reference recipe)
-base_lr: 0.00000001
-step_size: 200  # ~4-5x batches/epoch; full cycle = 2*step_size steps
+# Data augmentation (set to False if test accuracy is poor)
+use_augmentation: True
+augmentation_prob: 0.3  # 30% probability
 
-lr_annealing: !new:speechbrain.nnet.schedulers.CyclicLRScheduler
-    base_lr: !ref <base_lr>
-    # current_lr: !ref <base_lr>
-    max_lr: !ref <lr>
-    step_size: !ref <step_size>
+# LR scheduler: ReduceLROnPlateau for adaptive learning rate
+# Reduces LR when validation error plateaus
+early_stopping_patience: 8  # Epochs without improvement before stopping (was hardcoded 5)
+lr_min: 0.00001
+
+lr_annealing: !new:speechbrain.nnet.schedulers.ReduceLROnPlateau
+    lr_min: !ref <lr_min>
+    factor: 0.5
+    patience: 3
+    dont_halve_until_epoch: 3
 
 # Data loader options
 dataloader_options:
     batch_size: !ref <batch_size>
     num_workers: !ref <num_workers>
     shuffle: True
-    drop_last: True
+    drop_last: True  # CRITICAL: prevents 1-sample last batch (625%16=1) that crashes BatchNorm
+
+# Validation loader: never drop samples, no shuffle
+val_dataloader_options:
+    batch_size: !ref <batch_size>
+    num_workers: !ref <num_workers>
+    shuffle: False
+    drop_last: False
 
 # Epoch counter
 epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
@@ -47,9 +58,9 @@ epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
 # global can cause train/val mismatch and stagnant val error on small datasets
 mean_var_norm: !new:speechbrain.processing.features.InputNormalization
     norm_type: sentence
-    std_norm: False
+    std_norm: True  # Normalize both mean AND variance per utterance (standard ECAPA recipe)
 
-# ECAPA-TDNN model
+# ECAPA-TDNN model (full capacity — matches reference config)
 embedding_model: !new:speechbrain.lobes.models.ECAPA_TDNN.ECAPA_TDNN
     input_size: !ref <n_mels>
     channels: [1024, 1024, 1024, 1024, 3072]
@@ -74,11 +85,12 @@ opt_class: !name:torch.optim.Adam
     lr: !ref <lr>
     weight_decay: !ref <weight_decay>
 
-# Loss function (moderate scale for better speaker-independent generalization)
+# Loss function: Reduced margin and scale to prevent overfitting on small dataset
+# Lower values = softer decision boundaries = better generalization
 compute_cost: !new:speechbrain.nnet.losses.LogSoftmaxWrapper
     loss_fn: !new:speechbrain.nnet.losses.AdditiveAngularMargin
-        margin: 0.2
-        scale: 30
+        margin: 0.1  # Standard margin for multi-class emotion (0.1 was too soft)
+        scale: 15   # Higher scale sharpens decision boundaries
 
 # Error statistics
 error_stats: !name:speechbrain.utils.metric_stats.MetricStats
